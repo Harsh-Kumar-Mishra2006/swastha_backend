@@ -13,14 +13,12 @@ const publicRoutes = require('./routes/publicRoutes');
 const app = express();
 connectDB();
 const path = require('path');
-const fs = require('fs');
 
 // Define allowed origins
 const allowedOrigins = [
-  'http://localhost:5173',           // Local development
-  'http://localhost:3000',           // Alternative local port
-  'https://swastha-backend-1.onrender.com',  // Your frontend URL (update this!)
-  // Add any other frontend URLs you might have
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://swastha-backend-1.onrender.com',
 ];
 
 const corsOptions = {
@@ -33,8 +31,6 @@ const corsOptions = {
     } else {
       console.log('Blocked origin:', origin);
       callback(null, false);
-      // Alternatively, if you want to block but not throw error:
-      // callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
@@ -42,17 +38,19 @@ const corsOptions = {
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
   exposedHeaders: ['Content-Length', 'X-Response-Time'],
-  maxAge: 86400, // 24 hours
+  maxAge: 86400,
 };
 
+// Apply CORS middleware - this automatically handles OPTIONS requests
 app.use(cors(corsOptions));
 
-// Handle preflight requests for all routes
-app.options('*', cors(corsOptions));
+// Remove this line - it's causing the error:
+// app.options('*', cors(corsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Your routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/public', doctorRoutes);
