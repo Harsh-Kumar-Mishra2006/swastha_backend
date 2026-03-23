@@ -25,7 +25,7 @@ const authSchema = new mongoose.Schema({
   },
   role: { 
     type: String, 
-    enum: ['patient', 'doctor', 'admin'], 
+    enum: ['patient', 'doctor', 'admin', 'MLT'], 
     default: 'patient' 
   },
   profile: {

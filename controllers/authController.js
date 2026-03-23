@@ -97,11 +97,11 @@ const signup = async (req, res) => {
   }
 
   // Validate role
-  const validRoles = ['patient', 'doctor', 'admin'];
+  const validRoles = ['patient', 'doctor', 'admin' , 'MLT'];
   if (!validRoles.includes(role)) {
     return res.status(400).json({
       success: false,
-      error: 'Invalid role. Must be patient, doctor, or admin'
+      error: 'Invalid role. Must be patient, doctor, or admin or MLT'
     });
   }
 
