@@ -13,7 +13,6 @@ const {
   updateDoctorProfile
 } = require('../controllers/adminController');
 const authenticateToken = require('../middlewares/authMiddleware');
-const authorizeRoles = require('../middlewares/roleMiddleware');
 const adminAuth = require('../middlewares/adminAuthMiddleware');
 
 // Apply authentication to all admin routes
