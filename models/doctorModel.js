@@ -66,7 +66,7 @@ doctorSchema.pre('save', async function(next) {
   try {
     // Only hash if password is modified
     if (!this.isModified('password')) {
-      return next();
+      return ;
     }
     
     console.log('🔐 Hashing password for doctor:', this.email);
@@ -77,10 +77,9 @@ doctorSchema.pre('save', async function(next) {
     this.password = hashedPassword;
     console.log('✅ Password hashed successfully');
     
-    next();
   } catch (error) {
     console.error('❌ Error hashing password:', error);
-    next(error);
+    throw error;
   }
 });
 
