@@ -1,7 +1,10 @@
 // authRoutes.js
 const express = require('express');
+const jwt= require('jsonwebtoken');
 const { login, signup, logout, getProfile, updateProfile, checkDoctorAuthorization,debugToken } = require('../controllers/authController');
 const authenticateToken = require('../middlewares/authMiddleware'); 
+const auth= require('../models/authModel');
+const doctor= require('../models/doctorModel');
 const router = express.Router();
 
 // PUBLIC ROUTES 

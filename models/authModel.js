@@ -121,6 +121,16 @@ authSchema.virtual('roleSpecificData').get(function() {
       emergencyContact: this.profile.emergencyContact
     };
   }
+   else if (this.role === 'MLT') {
+    return {
+      specialization: this.profile.specialization,
+      qualifications: this.profile.qualifications,
+      experience: this.profile.experience,
+      licenseNumber: this.profile.licenseNumber,
+      department: this.profile.department,
+      bio: this.profile.bio
+    };
+   }
   return {};
 });
 

@@ -23,6 +23,8 @@ const {
 const authenticateToken = require('../middlewares/authMiddleware');
 const adminAuth = require('../middlewares/adminAuthMiddleware');
 
+const Doctor = require('../models/doctorModel');
+const MLT = require('../models/mltModel');
 // Apply authentication to all admin routes
 router.use(authenticateToken);
 
@@ -39,7 +41,7 @@ router.delete('/doctors/:doctorId', adminAuth, deleteDoctor);
 router.put('/doctors/:doctorId', adminAuth, updateDoctorProfile);
 
 // Statistics 
-router.get('/stats', adminAuth, getDoctorStats);
+router.get('/doctors/stats', adminAuth, getDoctorStats);
 
 // ==================== MLT ROUTES ====================
 router.post('/mlt', adminAuth, addMLT);
@@ -51,12 +53,25 @@ router.delete('/mlt/:mltId', adminAuth, deleteMLT);
 router.post('/mlt/:mltId/reset-password', adminAuth, resetMLTPassword);
 router.get('/mlt/stats', adminAuth, getMLTStats);
 
-// Statistics (combined)
+
+// Combined stats endpoint
 router.get('/stats', adminAuth, async (req, res) => {
   try {
-    const doctorStats = await getDoctorStats(req, res);
-    const mltStats = await getMLTStats(req, res);
-    // Combine stats if needed
+    const doctorStats = await Doctor.aggregate([
+      { $group: { _id: null, total: { $sum: 1 }, active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } } } }
+    ]);
+    
+    const mltStats = await MLT.aggregate([
+      { $group: { _id: null, total: { $sum: 1 }, active: { $sum: { $cond: [{ $eq: ['$status', 'active'] }, 1, 0] } } } }
+    ]);
+    
+    res.json({
+      success: true,
+      data: {
+        doctors: doctorStats[0] || { total: 0, active: 0 },
+        mlt: mltStats[0] || { total: 0, active: 0 }
+      }
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

@@ -2,6 +2,7 @@ const auth = require('../models/authModel');
 const jwt = require('jsonwebtoken');
 const bcryptjs = require('bcryptjs');
 const Doctor = require('../models/doctorModel.js');
+const MLT= require('../models/mltModel');
 
 const checkDoctorAuthorization = async (req, res) => {
   try {
@@ -150,6 +151,29 @@ if (role === 'doctor') {
     });
   }
 }
+
+    // In authController.js - signup function
+// Add this after doctor validation
+
+if (role === 'MLT') {
+  // Check if MLT was added by admin
+  const mltRecord = await MLT.findOne({ email });
+  
+  if (!mltRecord) {
+    return res.status(403).json({
+      success: false,
+      error: 'You cannot register as MLT. Please contact admin to add you first.'
+    });
+  }
+  
+  // If MLT record exists but is not active
+  if (mltRecord.status !== 'active') {
+    return res.status(403).json({
+      success: false,
+      error: 'Your MLT account is pending approval. Please contact admin.'
+    });
+  }
+}
     
     const createuser = await auth.create({ 
       name,
@@ -196,6 +220,8 @@ const login = async (req, res) => {
       });
     }
 
+    let doctorInfo = null;
+    let mltInfo= null;
     // Find user in Auth collection
     let user = await auth.findOne({
       $or: [
@@ -257,7 +283,51 @@ const login = async (req, res) => {
         user.password = hash;
         await user.save();
       }
-    } else {
+    } 
+    // In authController.js - login function
+// Add this after doctor handling and before else statement
+
+// For MLT: Verify password against MLT collection
+else if (user.role === 'MLT') {
+  const mlt = await MLT.findOne({ email: user.email });
+  
+  if (!mlt) {
+    return res.status(403).json({
+      success: false,
+      error: 'MLT profile not found. Please contact admin.'
+    });
+  }
+
+  // Check MLT status
+  if (mlt.status !== 'active') {
+    return res.status(403).json({
+      success: false,
+      error: `Your account is ${mlt.status}. Please contact admin.`
+    });
+  }
+
+  // Compare password with MLT's password
+  const isPasswordValid = await mlt.comparePassword(password);
+  
+  if (!isPasswordValid) {
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid password'
+    });
+  }
+
+  // Sync password with Auth if needed
+  const isAuthPasswordValid = await bcryptjs.compare(password, user.password);
+  if (!isAuthPasswordValid) {
+    const salt = await bcryptjs.genSalt(10);
+    const hash = await bcryptjs.hash(password, salt);
+    user.password = hash;
+    await user.save();
+  }
+  
+  mltInfo = mlt;
+}
+    else {
       // For non-doctors, use Auth password
       const isMatch = await bcryptjs.compare(password, user.password);
       
@@ -268,6 +338,8 @@ const login = async (req, res) => {
         });
       }
     }
+
+
 
     // Generate token
     const token = jwt.sign(
@@ -291,10 +363,15 @@ const login = async (req, res) => {
     });
 
     // Get doctor info if applicable
-    let doctorInfo = null;
+    
     if (user.role === 'doctor') {
       doctorInfo = await Doctor.findOne({ email: user.email }).select('-password');
     }
+if (user.role === 'doctor') {
+  doctorInfo = await Doctor.findOne({ email: user.email }).select('-password');
+} else if (user.role === 'MLT') {
+  mltInfo = await MLT.findOne({ email: user.email }).select('-password');
+}
 
     res.json({
       success: true,
@@ -308,7 +385,8 @@ const login = async (req, res) => {
         role: user.role,
         profile: user.profile,
         isVerified: user.isVerified,
-        doctorProfile: doctorInfo
+        doctorProfile: doctorInfo,
+        mltProfile: mltInfo
       },
       message: `Welcome back, ${user.name}!`,
     });
