@@ -82,7 +82,84 @@ const checkDoctorAuthorization = async (req, res) => {
     });
   }
 };
+// Add this function to authController.js
+const checkMLTAuthorization = async (req, res) => {
+  try {
+    console.log('🔵 [1] /check-mlt endpoint called');
+    
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        error: "No token provided"
+      });
+    }
 
+    const decoded = jwt.verify(token, 'mypassword');
+    
+    const user = await auth.findById(decoded.userId);
+    
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: "User not found"
+      });
+    }
+
+    if (user.role !== 'MLT') {
+      return res.json({
+        success: true,
+        isAuthorized: false,
+        message: 'User is not an MLT'
+      });
+    }
+
+    // Find MLT in MLT collection (without password)
+    const mlt = await MLT.findOne({ 
+      email: user.email
+    }).select('-password');
+
+    if (!mlt) {
+      return res.json({
+        success: true,
+        isAuthorized: false,
+        message: 'MLT profile not found'
+      });
+    }
+
+    if (mlt.status !== 'active') {
+      return res.json({
+        success: true,
+        isAuthorized: false,
+        message: `MLT account is ${mlt.status}`
+      });
+    }
+
+    res.json({
+      success: true,
+      isAuthorized: true,
+      mlt: {
+        id: mlt._id,
+        name: mlt.name,
+        email: mlt.email,
+        specialization: mlt.specialization,
+        qualifications: mlt.qualifications,
+        experience: mlt.experience,
+        licenseNumber: mlt.licenseNumber,
+        department: mlt.department,
+        status: mlt.status
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ [ERROR] MLT auth check error:', error.message);
+    res.status(500).json({
+      success: false,
+      error: "Error checking MLT authorization: " + error.message
+    });
+  }
+};
 // Update signup controller to save profile data
 const signup = async (req, res) => {
   let { name, email, username, phone, password, role = 'patient', profile = {} } = req.body;
@@ -119,19 +196,6 @@ const signup = async (req, res) => {
       });
     }
 
-    // Hash password and create user
-    const salt = await bcryptjs.genSalt(10);
-    const hash = await bcryptjs.hash(password, salt);
-    
-    // Prepare profile data for patients
-    const patientProfile = role === 'patient' ? {
-      ...profile,
-      age: age || '',
-      gender: gender || '',
-      dob: dob || ''
-    } : profile;
-
-    // In signup function, add this after validation but before creating user
 if (role === 'doctor') {
   // Check if doctor was added by admin
   const doctorRecord = await Doctor.findOne({ email });
@@ -152,8 +216,6 @@ if (role === 'doctor') {
   }
 }
 
-    // In authController.js - signup function
-// Add this after doctor validation
 
 if (role === 'MLT') {
   // Check if MLT was added by admin
@@ -174,6 +236,21 @@ if (role === 'MLT') {
     });
   }
 }
+      // Hash password
+    const salt = await bcryptjs.genSalt(10);
+    const hash = await bcryptjs.hash(password, salt);
+    
+    // Prepare profile data
+    let finalProfile = profile;
+    if (role === 'patient') {
+      finalProfile = {
+        ...profile,
+        age: age || '',
+        gender: gender || '',
+        dob: dob || ''
+      };
+    }
+
     
     const createuser = await auth.create({ 
       name,
@@ -182,8 +259,28 @@ if (role === 'MLT') {
       phone,
       password: hash,
       role,
-      profile: patientProfile
+      profile: finalProfile,
+      isVerified: true,
+      isActive: true
     });
+
+    // If role is MLT, update the existing MLT record's auth reference
+    if (role === 'MLT') {
+      await MLT.findOneAndUpdate(
+        { email },
+        { authId: createuser._id },
+        { new: true }
+      );
+    }
+
+    // If role is doctor, update the existing doctor record's auth reference
+    if (role === 'doctor') {
+      await Doctor.findOneAndUpdate(
+        { email },
+        { authId: createuser._id },
+        { new: true }
+      );
+    }
 
     res.status(201).json({
       success: true,
@@ -671,5 +768,6 @@ module.exports = {
   getProfile,
   debugToken,
   updateProfile,
-  checkDoctorAuthorization
+  checkDoctorAuthorization,
+  checkMLTAuthorization
 };

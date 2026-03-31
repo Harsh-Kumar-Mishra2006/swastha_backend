@@ -385,7 +385,7 @@ const updateDoctorProfile = async (req, res) => {
   }
 };
 
-// Add MLT (Medical Laboratory Technician)
+// Add MLT (Medical Laboratory Technician) - FIXED VERSION
 const addMLT = async (req, res) => {
   try {
     const { 
@@ -429,35 +429,12 @@ const addMLT = async (req, res) => {
       });
     }
 
-    // Hash password for Auth
-    const salt = await bcryptjs.genSalt(10);
-    const hash = await bcryptjs.hash(password, salt);
-
-    // Create auth user for MLT
-    const newMLTUser = await Auth.create({
-      name,
-      email,
-      username,
-      phone,
-      password: hash,
-      role: 'MLT',
-      isVerified: true,
-      profile: {
-        specialization,
-        qualifications,
-        experience,
-        bio: bio || '',
-        licenseNumber,
-        department
-      }
-    });
-
-    // Create MLT profile
+    // Create MLT profile FIRST (password will be hashed by pre-save hook)
     const mltProfile = await MLT.create({
       name,
       email,
       phone,
-      password, // Will be hashed by pre-save hook
+      password, // Will be hashed by MLT model's pre-save hook
       specialization,
       qualifications,
       experience,
@@ -466,6 +443,27 @@ const addMLT = async (req, res) => {
       bio: bio || '',
       status: 'active',
       addedBy: req.user.userId
+    });
+
+    // Create auth user for MLT using the SAME hashed password from MLT profile
+    // This ensures both have the same password hash
+    const newMLTUser = await Auth.create({
+      name,
+      email,
+      username,
+      phone,
+      password: mltProfile.password, // Use the already hashed password from MLT profile
+      role: 'MLT',
+      isVerified: true,
+      isActive: true,
+      profile: {
+        specialization,
+        qualifications,
+        experience,
+        bio: bio || '',
+        licenseNumber,
+        department
+      }
     });
 
     res.status(201).json({
@@ -498,6 +496,7 @@ const addMLT = async (req, res) => {
     });
   }
 };
+
 
 // Get all MLTs
 const getAllMLTs = async (req, res) => {

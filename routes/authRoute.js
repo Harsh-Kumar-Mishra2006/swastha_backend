@@ -1,10 +1,10 @@
-// authRoutes.js
+// routes/authRoutes.js
 const express = require('express');
-const jwt= require('jsonwebtoken');
-const { login, signup, logout, getProfile, updateProfile, checkDoctorAuthorization,debugToken } = require('../controllers/authController');
+const jwt = require('jsonwebtoken');
+const { login, signup, logout, getProfile, updateProfile, checkDoctorAuthorization, checkMLTAuthorization, debugToken } = require('../controllers/authController');
 const authenticateToken = require('../middlewares/authMiddleware'); 
-const auth= require('../models/authModel');
-const doctor= require('../models/doctorModel');
+const auth = require('../models/authModel'); // Fixed: changed 'Auth' to 'auth'
+const doctor = require('../models/doctorModel');
 const router = express.Router();
 
 // PUBLIC ROUTES 
@@ -13,12 +13,13 @@ router.post('/signup', signup);
 router.post('/logout', logout);
 
 // PROTECTED ROUTES 
-router.get('/profile', getProfile);
+router.get('/profile', authenticateToken, getProfile);
 router.get('/debug-token', debugToken);
 router.put('/profile', authenticateToken, updateProfile);
+router.get('/check-mlt', authenticateToken, checkMLTAuthorization);
 router.get('/check-doctor', authenticateToken, checkDoctorAuthorization); 
 
-// Debug route 
+// Debug route - Fixed model reference
 router.get('/debug-auth', async (req, res) => {
   try {
     const token = req.header('Authorization')?.replace('Bearer ', '');
@@ -28,13 +29,13 @@ router.get('/debug-auth', async (req, res) => {
     }
 
     const decoded = jwt.verify(token, 'mypassword');
-    const user = await Auth.findById(decoded.userId);
+    const user = await auth.findById(decoded.userId); // Fixed: changed 'Auth' to 'auth'
     
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const doctor = await Doctor.findOne({ email: user.email });
+    const doctorProfile = await doctor.findOne({ email: user.email });
     
     res.json({
       tokenData: decoded,
@@ -45,27 +46,28 @@ router.get('/debug-auth', async (req, res) => {
         isVerified: user.isVerified,
         isActive: user.isActive
       },
-      doctorProfile: doctor ? {
-        id: doctor._id,
-        email: doctor.email,
-        status: doctor.status,
-        specialization: doctor.specialization
+      doctorProfile: doctorProfile ? {
+        id: doctorProfile._id,
+        email: doctorProfile.email,
+        status: doctorProfile.status,
+        specialization: doctorProfile.specialization
       } : null,
       checks: {
         isDoctor: user.role === 'doctor',
         isVerified: user.isVerified,
         isActive: user.isActive,
-        hasDoctorProfile: !!doctor,
-        doctorStatus: doctor?.status,
+        hasDoctorProfile: !!doctorProfile,
+        doctorStatus: doctorProfile?.status,
         isFullyAuthorized: user.role === 'doctor' && 
                           user.isVerified && 
                           user.isActive && 
-                          doctor && 
-                          doctor.status === 'active'
+                          doctorProfile && 
+                          doctorProfile.status === 'active'
       }
     });
     
   } catch (error) {
+    console.error('Debug auth error:', error);
     res.status(500).json({ error: error.message });
   }
 });

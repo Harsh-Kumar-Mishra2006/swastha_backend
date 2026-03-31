@@ -53,6 +53,10 @@ const doctorSchema = new mongoose.Schema({
     enum: ['pending', 'active', 'inactive'],
     default: 'active'
   },
+  authId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Auth'
+  },
   addedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Auth',

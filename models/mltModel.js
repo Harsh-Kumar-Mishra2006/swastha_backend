@@ -57,6 +57,10 @@ const mltSchema = new mongoose.Schema({
     ref: 'Auth',
     required: true
   },
+  authId: {  // ADD THIS FIELD
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Auth'
+  },
   createdAt: { 
     type: Date, 
     default: Date.now 
