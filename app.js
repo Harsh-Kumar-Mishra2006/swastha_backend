@@ -9,7 +9,7 @@ const doctorRoutes = require('./routes/doctorRoutes');
 const appointmentRoutes = require('./routes/appointmentRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const publicRoutes = require('./routes/publicRoutes');
-const testReportRoutes = require('./routes/testReportRoutes');
+const testReportRoutes = require('./routes/testReportRoute');
 
 const app = express();
 connectDB();
