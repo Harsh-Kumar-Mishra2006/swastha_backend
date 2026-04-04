@@ -393,6 +393,8 @@ const uploadReports = async (req, res) => {
   }
 };
 
+
+
 module.exports = {
   checkAvailability,
   getAppointmentFormData,

@@ -297,18 +297,41 @@ const verifyPayment = async (req, res) => {
 
 // @desc    Webhook for payment updates
 // @route   POST /api/payments/webhook
+// Add this function at the top of paymentController.js
+
+// Verify Cashfree webhook signature
+const verifyWebhookSignature = (signature, body, secretKey) => {
+  try {
+    const crypto = require('crypto');
+    const expectedSignature = crypto
+      .createHmac('sha256', secretKey)
+      .update(JSON.stringify(body))
+      .digest('base64');
+    return signature === expectedSignature;
+  } catch (error) {
+    console.error('Signature verification error:', error);
+    return false;
+  }
+};
+
+// Update the webhook handler
 const paymentWebhook = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     const webhookData = req.body;
-    
-    // Verify webhook signature (implement Cashfree signature verification)
     const signature = req.headers['x-webhook-signature'];
-    // Add signature verification logic here
     
-    const { order_id, payment_status } = webhookData.data || webhookData;
+    // Verify webhook signature in production
+    if (process.env.NODE_ENV === 'production') {
+      const isValid = verifyWebhookSignature(signature, req.body, CASHFREE_SECRET_KEY);
+      if (!isValid) {
+        return res.status(401).json({ error: 'Invalid signature' });
+      }
+    }
+    
+    const { order_id, payment_status, payment_id } = webhookData.data || webhookData;
 
     if (!order_id) {
       return res.status(400).json({ error: 'Order ID missing' });
@@ -323,6 +346,11 @@ const paymentWebhook = async (req, res) => {
     if (payment_status === 'SUCCESS') {
       payment.paymentStatus = 'paid';
       payment.orderStatus = 'success';
+      payment.transactionDetails = {
+        transactionId: payment_id,
+        paymentTime: new Date(),
+        paymentMode: webhookData.data?.payment_method
+      };
       
       const appointment = await Appointment.findById(payment.appointmentId).session(session);
       if (appointment && appointment.status === 'pending') {
@@ -332,7 +360,7 @@ const paymentWebhook = async (req, res) => {
           amount: payment.totalAmount,
           status: 'paid',
           method: payment.paymentMethod,
-          transactionId: webhookData.data?.payment_id,
+          transactionId: payment_id,
           paidAt: new Date()
         };
         await appointment.save({ session });
@@ -590,6 +618,7 @@ const getMyPayments = async (req, res) => {
     });
   }
 };
+
 
 module.exports = {
   createPaymentOrder,

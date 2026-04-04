@@ -42,7 +42,6 @@ const appointmentSchema = new mongoose.Schema({
   bookingType: {
     type: String,
     enum: ['direct', 'paid'],
-    required: true,
     default: 'direct'
   },
   appointmentDate: {
@@ -64,10 +63,12 @@ const appointmentSchema = new mongoose.Schema({
     enum: ['pending', 'confirmed', 'completed', 'cancelled', 'rescheduled', 'expired'],
     default: 'pending'
   },
-  // NEW: Add expiry for pending appointments
+  // ADD THIS - expiresAt field for pending appointments
   expiresAt: {
     type: Date,
-    default: () => new Date(+new Date() + 30*60*1000) // 30 minutes from now
+    default: function() {
+      return new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from creation
+    }
   },
   reasonForVisit: {
     type: String,
@@ -140,6 +141,12 @@ appointmentSchema.pre('save', async function(next) {
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     this.appointmentId = `APT${year}${month}${day}${random}`;
   }
+  
+  // Set expiresAt for pending appointments if not set
+  if (this.status === 'pending' && !this.expiresAt) {
+    this.expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+  }
+  
   next();
 });
 
