@@ -6,11 +6,6 @@ const paymentSchema = new mongoose.Schema({
     unique: true,
     required: true
   },
-  orderId: {
-    type: String,
-    required: true,
-    unique: true
-  },
   appointmentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Appointment',
@@ -52,47 +47,35 @@ const paymentSchema = new mongoose.Schema({
     type: Number,
     required: true
   },
-  paymentMethod: {
-    type: String,
-    enum: ['upi', 'card', 'netbanking', 'wallet'],
-    default: 'upi'
-  },
   paymentStatus: {
     type: String,
-    enum: ['pending', 'paid', 'failed', 'refunded'],
+    enum: ['pending', 'paid', 'failed', 'rejected'],
     default: 'pending'
   },
-  orderStatus: {
-    type: String,
-    enum: ['created', 'pending', 'success', 'failure'],
-    default: 'created'
-  },
-  // Cashfree specific fields
-  cashfree: {
-    orderId: String,
-    orderToken: String,
-    paymentLink: String,
-    paymentSessionId: String,
-    qrCode: String,
-    upiIntent: String
-  },
-  transactionDetails: {
-    transactionId: String,
-    bankReference: String,
-    paymentTime: Date,
-    paymentMode: String,
-    upiId: String
-  },
-  // For refunds
-  refund: {
-    status: {
+  // QR Code payment specific fields
+  qrPayment: {
+    upiId: {
       type: String,
-      enum: ['none', 'initiated', 'processed', 'failed']
+      default: 'yourbusiness@upi' // Replace with your actual UPI ID
     },
-    refundId: String,
-    refundAmount: Number,
-    refundReason: String,
-    refundedAt: Date
+    upiName: {
+      type: String,
+      default: 'Your Business Name'
+    },
+    transactionId: String,
+    transactionReference: String,
+    paymentTime: Date,
+    uploadedScreenshot: {
+      fileName: String,
+      fileUrl: String,
+      uploadedAt: Date
+    },
+    verifiedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Auth'
+    },
+    verifiedAt: Date,
+    verificationNotes: String
   },
   paymentDate: {
     type: Date,
@@ -108,7 +91,7 @@ const paymentSchema = new mongoose.Schema({
   }
 });
 
-// Generate unique payment ID and order ID
+// Generate unique payment ID
 paymentSchema.pre('save', async function(next) {
   this.updatedAt = Date.now();
   
@@ -119,13 +102,6 @@ paymentSchema.pre('save', async function(next) {
     const day = date.getDate().toString().padStart(2, '0');
     const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
     this.paymentId = `PAY${year}${month}${day}${random}`;
-  }
-  
-  if (!this.orderId) {
-    const date = new Date();
-    const timestamp = date.getTime().toString().slice(-8);
-    const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-    this.orderId = `ORDER_${timestamp}${random}`;
   }
   
   next();

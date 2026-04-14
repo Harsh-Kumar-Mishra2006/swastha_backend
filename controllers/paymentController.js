@@ -1,37 +1,76 @@
-// controllers/paymentController.js
 const Payment = require('../models/paymentModel');
 const Appointment = require('../models/appointmentModel');
 const Patient = require('../models/patientModel');
 const Doctor = require('../models/doctorModel');
 const mongoose = require('mongoose');
-const axios = require('axios');
-const PDFDocument = require('pdfkit');
-const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
-// Cashfree configuration from .env
-const CASHFREE_APP_ID = process.env.SECRET_APP_ID_CASHFREE;
-const CASHFREE_SECRET_KEY = process.env.SECRET_API_KEY_CASHFREE;
-const CASHFREE_API_URL = 'https://sandbox.cashfree.com/pg'; // Sandbox for testing
+// @desc    Get QR Code details for payment
+// @route   GET /api/payments/qr-details
+const getQRPaymentDetails = async (req, res) => {
+  try {
+    const { appointmentId } = req.query;
+    
+    // Get appointment to fetch amount
+    const appointment = await Appointment.findById(appointmentId);
+    
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Appointment not found'
+      });
+    }
 
-// Headers for Cashfree API
-const getHeaders = () => ({
-  'Content-Type': 'application/json',
-  'x-api-version': '2022-09-01',
-  'x-client-id': CASHFREE_APP_ID,
-  'x-client-secret': CASHFREE_SECRET_KEY
-});
+    const consultationFee = appointment.doctor.consultationFee || 500;
+    const convenienceFee = Math.round(consultationFee * 0.02);
+    const totalAmount = consultationFee + convenienceFee;
 
-// @desc    Create payment order after appointment booking
-// @route   POST /api/payments/create-order
-const createPaymentOrder = async (req, res) => {
+    res.json({
+      success: true,
+      data: {
+        upiId: 'yourbusiness@upi', // Replace with your actual UPI ID
+        upiName: 'Your Business Name',
+        amount: totalAmount,
+        consultationFee,
+        convenienceFee,
+        qrCodeUrl: '/images/payment-qr.png', // Path to your QR code image in public folder
+        instructions: [
+          '1. Scan the QR code using any UPI app (Google Pay, PhonePe, Paytm, etc.)',
+          '2. Verify the payee name and amount',
+          '3. Complete the payment',
+          '4. Take a screenshot of the payment success screen',
+          '5. Upload the screenshot below'
+        ]
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
+// @desc    Upload payment screenshot and create payment record
+// @route   POST /api/payments/upload-screenshot
+const uploadPaymentScreenshot = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
     const userId = req.user.userId;
-    const { appointmentId } = req.body;
+    const { appointmentId, transactionId, transactionReference, paymentTime } = req.body;
+    
+    // Check if file was uploaded
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'Payment screenshot is required'
+      });
+    }
 
-    // Get appointment details with proper validation
+    // Get appointment details
     const appointment = await Appointment.findOne({
       _id: appointmentId,
       'patient.userId': userId,
@@ -39,16 +78,19 @@ const createPaymentOrder = async (req, res) => {
     }).session(session);
 
     if (!appointment) {
+      // Clean up uploaded file
+      fs.unlinkSync(req.file.path);
       return res.status(404).json({
         success: false,
         error: 'Pending appointment not found'
       });
     }
 
-    // Check if appointment expired (if you added expiresAt field)
+    // Check if appointment expired
     if (appointment.expiresAt && new Date() > appointment.expiresAt) {
       appointment.status = 'expired';
       await appointment.save({ session });
+      fs.unlinkSync(req.file.path);
       
       return res.status(400).json({
         success: false,
@@ -56,99 +98,37 @@ const createPaymentOrder = async (req, res) => {
       });
     }
 
-    // Check if payment already exists and is not failed
+    // Check if payment already exists
     const existingPayment = await Payment.findOne({ 
       appointmentId: appointment._id,
-      paymentStatus: { $ne: 'failed' }
+      paymentStatus: { $in: ['pending', 'paid'] }
     }).session(session);
 
     if (existingPayment) {
-      if (existingPayment.paymentStatus === 'paid') {
-        return res.status(400).json({
-          success: false,
-          error: 'Payment already completed for this appointment'
-        });
-      }
-      
-      // Return existing pending payment details
-      return res.json({
-        success: true,
-        message: 'Existing payment found',
-        data: {
-          paymentId: existingPayment.paymentId,
-          orderId: existingPayment.orderId,
-          amount: existingPayment.totalAmount,
-          consultationFee: existingPayment.amount,
-          convenienceFee: existingPayment.convenienceFee,
-          patientName: existingPayment.patient.name,
-          doctorName: existingPayment.doctor.name,
-          appointmentDate: appointment.appointmentDate,
-          appointmentTime: appointment.appointmentTime.slot,
-          cashfree: existingPayment.cashfree
-        }
+      fs.unlinkSync(req.file.path);
+      return res.status(400).json({
+        success: false,
+        error: 'Payment already submitted for this appointment'
       });
     }
 
     // Calculate fees
     const consultationFee = appointment.doctor.consultationFee || 500;
-    const convenienceFee = Math.round(consultationFee * 0.02); // 2% convenience fee
+    const convenienceFee = Math.round(consultationFee * 0.02);
     const totalAmount = consultationFee + convenienceFee;
 
-    // Create order ID
-    const orderId = `ORD_${appointment.appointmentId}_${Date.now().toString().slice(-6)}`;
+    // Get patient details
+    const patient = await Patient.findOne({ userId }).session(session);
 
-    // Prepare Cashfree order
-    const cashfreeOrder = {
-      order_id: orderId,
-      order_amount: totalAmount,
-      order_currency: 'INR',
-      customer_details: {
-        customer_id: userId.toString(),
-        customer_name: appointment.patient.name,
-        customer_email: appointment.patient.email,
-        customer_phone: appointment.patient.phone
-      },
-      order_meta: {
-        return_url: `${process.env.BASE_URL}/api/payments/verify?order_id={order_id}`,
-        notify_url: `${process.env.BASE_URL}/api/payments/webhook`
-      },
-      order_note: `Consultation fee for Dr. ${appointment.doctor.name} on ${new Date(appointment.appointmentDate).toLocaleDateString()}`
-    };
-
-    // Call Cashfree API to create order
-    let cashfreeResponse;
-    try {
-      const response = await axios.post(
-        `${CASHFREE_API_URL}/orders`,
-        cashfreeOrder,
-        { headers: getHeaders() }
-      );
-      cashfreeResponse = response.data;
-    } catch (apiError) {
-      console.error('Cashfree API Error:', apiError.response?.data || apiError.message);
-      
-      // For development/testing only - REMOVE IN PRODUCTION
-      if (process.env.NODE_ENV === 'development') {
-        cashfreeResponse = {
-          order_id: orderId,
-          order_token: `mock_token_${Date.now()}`,
-          payment_link: `https://test.cashfree.com/pay/${orderId}`,
-          payment_session_id: `session_${Date.now()}`
-        };
-      } else {
-        throw new Error('Payment gateway error. Please try again.');
-      }
-    }
-
-    // Create payment record
+    // Create payment record with pending status
     const payment = await Payment.create([{
       appointmentId: appointment._id,
       patient: {
-        patientId: appointment.patient.patientId,
-        userId: appointment.patient.userId,
-        name: appointment.patient.name,
-        email: appointment.patient.email,
-        phone: appointment.patient.phone
+        patientId: patient._id,
+        userId: patient.userId,
+        name: patient.name,
+        email: patient.email,
+        phone: patient.phone
       },
       doctor: {
         doctorId: appointment.doctor.doctorId,
@@ -159,12 +139,18 @@ const createPaymentOrder = async (req, res) => {
       consultationFee,
       convenienceFee,
       totalAmount,
-      orderId,
-      cashfree: {
-        orderId: cashfreeResponse.order_id,
-        orderToken: cashfreeResponse.order_token,
-        paymentLink: cashfreeResponse.payment_link,
-        paymentSessionId: cashfreeResponse.payment_session_id
+      paymentStatus: 'pending',
+      qrPayment: {
+        upiId: 'yourbusiness@upi',
+        upiName: 'Your Business Name',
+        transactionId: transactionId || `TXN_${Date.now()}`,
+        transactionReference: transactionReference || '',
+        paymentTime: paymentTime ? new Date(paymentTime) : new Date(),
+        uploadedScreenshot: {
+          fileName: req.file.originalname,
+          fileUrl: `/uploads/payments/${req.file.filename}`,
+          uploadedAt: new Date()
+        }
       }
     }], { session });
 
@@ -172,28 +158,25 @@ const createPaymentOrder = async (req, res) => {
 
     res.json({
       success: true,
-      message: 'Payment order created',
+      message: 'Payment screenshot uploaded successfully. Your payment is pending verification.',
       data: {
         paymentId: payment[0].paymentId,
-        orderId: payment[0].orderId,
-        amount: payment[0].totalAmount,
-        consultationFee: payment[0].amount,
-        convenienceFee: payment[0].convenienceFee,
-        patientName: payment[0].patient.name,
-        doctorName: payment[0].doctor.name,
-        appointmentDate: appointment.appointmentDate,
-        appointmentTime: appointment.appointmentTime.slot,
-        cashfree: {
-          orderToken: payment[0].cashfree.orderToken,
-          paymentLink: payment[0].cashfree.paymentLink,
-          paymentSessionId: payment[0].cashfree.paymentSessionId
-        }
+        paymentStatus: 'pending_verification',
+        message: 'Our team will verify your payment within 24 hours. You will receive a confirmation once verified.'
       }
     });
 
   } catch (error) {
     await session.abortTransaction();
-    console.error('Error creating payment order:', error);
+    // Clean up uploaded file if there was an error
+    if (req.file && req.file.path) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (unlinkError) {
+        console.error('Error deleting file:', unlinkError);
+      }
+    }
+    console.error('Error uploading payment screenshot:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -203,201 +186,127 @@ const createPaymentOrder = async (req, res) => {
   }
 };
 
-// @desc    Verify payment (callback from Cashfree)
-// @route   GET /api/payments/verify
-const verifyPayment = async (req, res) => {
+// @desc    Admin: Verify payment and confirm appointment
+// @route   PUT /api/payments/verify-payment/:paymentId
+const verifyPaymentAndConfirmAppointment = async (req, res) => {
   const session = await mongoose.startSession();
   session.startTransaction();
 
   try {
-    const { order_id } = req.query;
+    const { paymentId } = req.params;
+    const { action, notes } = req.body; // action: 'approve' or 'reject'
+    const adminUserId = req.user.userId;
 
-    // Get payment from database
-    const payment = await Payment.findOne({ orderId: order_id }).session(session);
+    const payment = await Payment.findById(paymentId).session(session);
     
     if (!payment) {
-      return res.redirect(`${process.env.FRONTEND_URL}/payment/failed?error=Payment not found`);
+      return res.status(404).json({
+        success: false,
+        error: 'Payment not found'
+      });
     }
 
-    // Get appointment
+    if (payment.paymentStatus !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: `Payment already ${payment.paymentStatus}`
+      });
+    }
+
     const appointment = await Appointment.findById(payment.appointmentId).session(session);
-    
-    if (!appointment || appointment.status !== 'pending') {
-      return res.redirect(`${process.env.FRONTEND_URL}/payment/failed?error=Appointment expired or invalid`);
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Appointment not found'
+      });
     }
 
-    // Verify with Cashfree API
-    try {
-      const response = await axios.get(
-        `${CASHFREE_API_URL}/orders/${order_id}/payments`,
-        { headers: getHeaders() }
-      );
-      
-      const payments = response.data;
-      if (payments && payments.length > 0) {
-        const paymentData = payments[0];
-        
-        if (paymentData.payment_status === 'SUCCESS') {
-          // Update payment record
-          payment.paymentStatus = 'paid';
-          payment.orderStatus = 'success';
-          payment.paymentMethod = paymentData.payment_method || 'upi';
-          payment.transactionDetails = {
-            transactionId: paymentData.payment_id,
-            bankReference: paymentData.bank_reference,
-            paymentTime: new Date(),
-            paymentMode: paymentData.payment_method,
-            upiId: paymentData.payment_method?.upi?.upi_id
-          };
-          payment.paymentDate = new Date();
-          await payment.save({ session });
+    if (action === 'approve') {
+      // Update payment status
+      payment.paymentStatus = 'paid';
+      payment.qrPayment.verifiedBy = adminUserId;
+      payment.qrPayment.verifiedAt = new Date();
+      payment.qrPayment.verificationNotes = notes || 'Payment verified';
+      await payment.save({ session });
 
-          // Update appointment status to confirmed
-          appointment.status = 'confirmed';
-          appointment.bookingType = 'paid';
-          appointment.payment = {
-            amount: payment.totalAmount,
-            status: 'paid',
-            method: payment.paymentMethod,
-            transactionId: paymentData.payment_id,
-            paidAt: new Date()
-          };
-          await appointment.save({ session });
+      // Update appointment status to confirmed
+      appointment.status = 'confirmed';
+      appointment.bookingType = 'paid';
+      appointment.payment = {
+        amount: payment.totalAmount,
+        status: 'paid',
+        method: 'QR Code Payment',
+        transactionId: payment.qrPayment.transactionId,
+        paidAt: new Date()
+      };
+      await appointment.save({ session });
 
-          await session.commitTransaction();
+      await session.commitTransaction();
 
-          // Redirect to success page
-          return res.redirect(
-            `${process.env.FRONTEND_URL}/payment/success?` +
-            `order_id=${order_id}&appointment_id=${payment.appointmentId}`
-          );
+      res.json({
+        success: true,
+        message: 'Payment verified and appointment confirmed successfully',
+        data: {
+          appointmentId: appointment.appointmentId,
+          paymentId: payment.paymentId,
+          patientName: payment.patient.name,
+          doctorName: payment.doctor.name
         }
-      }
-    } catch (error) {
-      console.error('Payment verification error:', error);
-    }
+      });
+    } 
+    else if (action === 'reject') {
+      // Update payment status to rejected
+      payment.paymentStatus = 'rejected';
+      payment.qrPayment.verifiedBy = adminUserId;
+      payment.qrPayment.verifiedAt = new Date();
+      payment.qrPayment.verificationNotes = notes || 'Payment verification failed - please contact support';
+      await payment.save({ session });
 
-    // Payment failed
-    payment.paymentStatus = 'failed';
-    payment.orderStatus = 'failure';
-    await payment.save({ session });
-    
-    await session.commitTransaction();
-    
-    res.redirect(`${process.env.FRONTEND_URL}/payment/failed?order_id=${order_id}`);
+      // Optionally cancel the appointment
+      appointment.status = 'cancelled';
+      appointment.additionalNotes = `Payment rejected: ${notes || 'Verification failed'}`;
+      await appointment.save({ session });
+
+      await session.commitTransaction();
+
+      res.json({
+        success: true,
+        message: 'Payment rejected and appointment cancelled',
+        data: {
+          paymentId: payment.paymentId,
+          patientName: payment.patient.name
+        }
+      });
+    }
+    else {
+      return res.status(400).json({
+        success: false,
+        error: 'Invalid action. Use "approve" or "reject"'
+      });
+    }
 
   } catch (error) {
     await session.abortTransaction();
     console.error('Error verifying payment:', error);
-    res.redirect(`${process.env.FRONTEND_URL}/payment/failed?error=Verification failed`);
-  } finally {
-    session.endSession();
-  }
-};
-
-// @desc    Webhook for payment updates
-// @route   POST /api/payments/webhook
-// Add this function at the top of paymentController.js
-
-// Verify Cashfree webhook signature
-const verifyWebhookSignature = (signature, body, secretKey) => {
-  try {
-    const crypto = require('crypto');
-    const expectedSignature = crypto
-      .createHmac('sha256', secretKey)
-      .update(JSON.stringify(body))
-      .digest('base64');
-    return signature === expectedSignature;
-  } catch (error) {
-    console.error('Signature verification error:', error);
-    return false;
-  }
-};
-
-// Update the webhook handler
-const paymentWebhook = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const webhookData = req.body;
-    const signature = req.headers['x-webhook-signature'];
-    
-    // Verify webhook signature in production
-    if (process.env.NODE_ENV === 'production') {
-      const isValid = verifyWebhookSignature(signature, req.body, CASHFREE_SECRET_KEY);
-      if (!isValid) {
-        return res.status(401).json({ error: 'Invalid signature' });
-      }
-    }
-    
-    const { order_id, payment_status, payment_id } = webhookData.data || webhookData;
-
-    if (!order_id) {
-      return res.status(400).json({ error: 'Order ID missing' });
-    }
-
-    const payment = await Payment.findOne({ orderId: order_id }).session(session);
-    
-    if (!payment) {
-      return res.status(404).json({ error: 'Payment not found' });
-    }
-
-    if (payment_status === 'SUCCESS') {
-      payment.paymentStatus = 'paid';
-      payment.orderStatus = 'success';
-      payment.transactionDetails = {
-        transactionId: payment_id,
-        paymentTime: new Date(),
-        paymentMode: webhookData.data?.payment_method
-      };
-      
-      const appointment = await Appointment.findById(payment.appointmentId).session(session);
-      if (appointment && appointment.status === 'pending') {
-        appointment.status = 'confirmed';
-        appointment.bookingType = 'paid';
-        appointment.payment = {
-          amount: payment.totalAmount,
-          status: 'paid',
-          method: payment.paymentMethod,
-          transactionId: payment_id,
-          paidAt: new Date()
-        };
-        await appointment.save({ session });
-      }
-    } else if (payment_status === 'FAILED') {
-      payment.paymentStatus = 'failed';
-      payment.orderStatus = 'failure';
-    }
-
-    payment.updatedAt = new Date();
-    await payment.save({ session });
-
-    await session.commitTransaction();
-
-    res.json({ 
-      success: true,
-      message: 'Webhook processed' 
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
-
-  } catch (error) {
-    await session.abortTransaction();
-    console.error('Webhook error:', error);
-    res.status(500).json({ error: error.message });
   } finally {
     session.endSession();
   }
 };
 
 // @desc    Get payment status
-// @route   GET /api/payments/status/:orderId
+// @route   GET /api/payments/status/:appointmentId
 const getPaymentStatus = async (req, res) => {
   try {
-    const { orderId } = req.params;
+    const { appointmentId } = req.params;
     const userId = req.user.userId;
 
     const payment = await Payment.findOne({ 
-      orderId,
+      appointmentId,
       'patient.userId': userId 
     });
 
@@ -414,15 +323,16 @@ const getPaymentStatus = async (req, res) => {
       success: true,
       data: {
         paymentId: payment.paymentId,
-        orderId: payment.orderId,
         amount: payment.totalAmount,
         paymentStatus: payment.paymentStatus,
-        orderStatus: payment.orderStatus,
         appointmentId: payment.appointmentId,
         appointmentStatus: appointment?.status,
         doctorName: payment.doctor.name,
         patientName: payment.patient.name,
-        transactionDetails: payment.transactionDetails,
+        uploadedScreenshot: payment.qrPayment.uploadedScreenshot,
+        verificationStatus: payment.paymentStatus === 'pending' ? 'under_review' : 
+                           payment.paymentStatus === 'paid' ? 'verified' : 'rejected',
+        verificationNotes: payment.qrPayment.verificationNotes,
         paymentDate: payment.paymentDate
       }
     });
@@ -435,140 +345,44 @@ const getPaymentStatus = async (req, res) => {
   }
 };
 
-// @desc    Generate payment receipt/slip PDF
-// @route   GET /api/payments/receipt/:appointmentId
-const generatePaymentSlip = async (req, res) => {
+// @desc    Get all pending payments (Admin)
+// @route   GET /api/payments/admin/pending
+const getPendingPayments = async (req, res) => {
   try {
-    const { appointmentId } = req.params;
-    const userId = req.user.userId;
+    const { page = 1, limit = 20 } = req.query;
 
-    const payment = await Payment.findOne({ 
-      appointmentId,
-      'patient.userId': userId,
-      paymentStatus: 'paid'
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const payments = await Payment.find({ paymentStatus: 'pending' })
+      .sort({ createdAt: 1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .populate('qrPayment.verifiedBy', 'name email');
+
+    const total = await Payment.countDocuments({ paymentStatus: 'pending' });
+
+    res.json({
+      success: true,
+      data: payments.map(p => ({
+        paymentId: p.paymentId,
+        patientName: p.patient.name,
+        patientPhone: p.patient.phone,
+        doctorName: p.doctor.name,
+        amount: p.totalAmount,
+        transactionId: p.qrPayment.transactionId,
+        screenshotUrl: p.qrPayment.uploadedScreenshot?.fileUrl,
+        uploadedAt: p.qrPayment.uploadedScreenshot?.uploadedAt,
+        appointmentId: p.appointmentId
+      })),
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
     });
 
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        error: 'Paid payment not found'
-      });
-    }
-
-    const appointment = await Appointment.findById(appointmentId);
-
-    // Create PDF document
-    const doc = new PDFDocument({ margin: 50, size: 'A4' });
-    
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename=payment_receipt_${payment.paymentId}.pdf`);
-    
-    doc.pipe(res);
-
-    // Header
-    doc.fontSize(20).font('Helvetica-Bold').text('HEALTH APP', { align: 'center' });
-    doc.fontSize(12).font('Helvetica').text('Your Trusted Healthcare Partner', { align: 'center' });
-    doc.moveDown();
-    doc.fontSize(16).font('Helvetica-Bold').text('PAYMENT RECEIPT', { align: 'center' });
-    doc.moveDown();
-
-    // Line
-    doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
-    doc.moveDown();
-
-    // Receipt details
-    const startY = doc.y;
-    
-    doc.font('Helvetica-Bold');
-    doc.text(`Receipt No:`, 50, startY);
-    doc.text(`Date:`, 50, startY + 20);
-    doc.text(`Payment ID:`, 50, startY + 40);
-    doc.text(`Order ID:`, 50, startY + 60);
-    
-    doc.font('Helvetica');
-    doc.text(`${payment.paymentId}`, 200, startY);
-    doc.text(`${new Date(payment.paymentDate).toLocaleDateString()}`, 200, startY + 20);
-    doc.text(`${payment.paymentId}`, 200, startY + 40);
-    doc.text(`${payment.orderId}`, 200, startY + 60);
-
-    doc.moveDown(5);
-
-    // Appointment Details
-    doc.font('Helvetica-Bold').fontSize(14).text('Appointment Details', 50, doc.y);
-    doc.moveDown();
-
-    const detailsY = doc.y;
-    doc.fontSize(12);
-    
-    doc.font('Helvetica-Bold');
-    doc.text(`Patient Name:`, 50, detailsY);
-    doc.text(`Doctor:`, 50, detailsY + 20);
-    doc.text(`Specialization:`, 50, detailsY + 40);
-    doc.text(`Appointment Date:`, 50, detailsY + 60);
-    doc.text(`Appointment Time:`, 50, detailsY + 80);
-    
-    doc.font('Helvetica');
-    doc.text(`${payment.patient.name}`, 200, detailsY);
-    doc.text(`Dr. ${payment.doctor.name}`, 200, detailsY + 20);
-    doc.text(`${payment.doctor.specialization || 'General'}`, 200, detailsY + 40);
-    doc.text(`${new Date(appointment.appointmentDate).toLocaleDateString()}`, 200, detailsY + 60);
-    doc.text(`${appointment.appointmentTime.slot}`, 200, detailsY + 80);
-
-    doc.moveDown(7);
-
-    // Payment Breakdown
-    doc.font('Helvetica-Bold').fontSize(14).text('Payment Breakdown', 50, doc.y);
-    doc.moveDown();
-
-    const paymentY = doc.y;
-    doc.fontSize(12);
-    
-    doc.font('Helvetica-Bold');
-    doc.text(`Consultation Fee:`, 50, paymentY);
-    doc.text(`Convenience Fee (2%):`, 50, paymentY + 20);
-    doc.text(`Total Amount:`, 50, paymentY + 40);
-    
-    doc.font('Helvetica');
-    doc.text(`₹ ${payment.amount}`, 200, paymentY);
-    doc.text(`₹ ${payment.convenienceFee}`, 200, paymentY + 20);
-    
-    doc.font('Helvetica-Bold');
-    doc.text(`₹ ${payment.totalAmount}`, 200, paymentY + 40);
-
-    doc.moveDown(4);
-
-    // Payment Status
-    const statusY = doc.y;
-    doc.text(`Payment Status:`, 50, statusY);
-    doc.font('Helvetica-Bold').fillColor('green');
-    doc.text(`PAID`, 200, statusY);
-    
-    doc.fillColor('black');
-    doc.font('Helvetica');
-    doc.text(`Payment Method:`, 50, statusY + 20);
-    doc.text(`${payment.paymentMethod?.toUpperCase() || 'UPI'}`, 200, statusY + 20);
-    
-    if (payment.transactionDetails?.transactionId) {
-      doc.text(`Transaction ID:`, 50, statusY + 40);
-      doc.text(`${payment.transactionDetails.transactionId}`, 200, statusY + 40);
-    }
-
-    doc.moveDown(4);
-
-    // Footer
-    doc.moveTo(50, doc.y + 10).lineTo(550, doc.y + 10).stroke();
-    doc.moveDown(2);
-
-    doc.fontSize(10).font('Helvetica-Oblique').text(
-      'This is a computer generated receipt. No signature required.',
-      50, doc.y + 20,
-      { align: 'center', width: 500 }
-    );
-
-    doc.end();
-
   } catch (error) {
-    console.error('Error generating PDF:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -596,12 +410,13 @@ const getMyPayments = async (req, res) => {
       success: true,
       data: payments.map(p => ({
         paymentId: p.paymentId,
-        orderId: p.orderId,
         amount: p.totalAmount,
         paymentStatus: p.paymentStatus,
         doctorName: p.doctor.name,
         paymentDate: p.paymentDate,
-        appointmentId: p.appointmentId
+        appointmentId: p.appointmentId,
+        verificationStatus: p.paymentStatus === 'pending' ? 'Awaiting Verification' :
+                           p.paymentStatus === 'paid' ? 'Verified ✓' : 'Rejected ✗'
       })),
       pagination: {
         page: parseInt(page),
@@ -619,12 +434,11 @@ const getMyPayments = async (req, res) => {
   }
 };
 
-
 module.exports = {
-  createPaymentOrder,
+  getQRPaymentDetails,
+  uploadPaymentScreenshot,
+  verifyPaymentAndConfirmAppointment,
   getPaymentStatus,
-  verifyPayment,
-  paymentWebhook,
-  generatePaymentSlip,
+  getPendingPayments,
   getMyPayments
 };

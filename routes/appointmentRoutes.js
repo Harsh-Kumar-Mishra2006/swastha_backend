@@ -11,7 +11,9 @@ const {
   getConfirmedAppointment,
   getMyAppointments,
   cancelAppointment,
-  uploadReports // Now this exists!
+  uploadReports, // Now this exists!
+  getPendingAppointmentWithPayment // Add this
+
 } = require('../controllers/appointmentController');
 
 // All routes require authentication and patient role
@@ -25,6 +27,8 @@ router.post('/create-pending', createPendingAppointment);
 router.get('/confirmed/:appointmentId', getConfirmedAppointment);
 router.get('/my-appointments', getMyAppointments);
 router.put('/cancel/:appointmentId', cancelAppointment);
+// Add this to your appointmentRoutes.js
+router.get('/pending-payment/:appointmentId', getPendingAppointmentWithPayment);
 
 // Fixed upload route - now with controller function
 router.post('/upload-reports/:appointmentId', 

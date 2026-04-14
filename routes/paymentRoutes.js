@@ -1,28 +1,30 @@
-// routes/paymentRoutes.js
 const express = require('express');
 const router = express.Router();
 const authenticateToken = require('../middlewares/authMiddleware');
 const authorizeRoles = require('../middlewares/roleMiddleware');
+const upload = require('../middlewares/uploadMiddleware');
 const {
-  createPaymentOrder,
+  getQRPaymentDetails,
+  uploadPaymentScreenshot,
+  verifyPaymentAndConfirmAppointment,
   getPaymentStatus,
-  verifyPayment,
-  paymentWebhook,
-  generatePaymentSlip,
+  getPendingPayments,
   getMyPayments
 } = require('../controllers/paymentController');
 
-// Public/Callback routes (NO AUTH)
-router.post('/webhook', paymentWebhook);
-router.get('/verify', verifyPayment);
+// Patient routes
+router.get('/qr-details', authenticateToken, authorizeRoles(['patient']), getQRPaymentDetails);
+router.post('/upload-screenshot', 
+  authenticateToken, 
+  authorizeRoles(['patient']),
+  upload.single('screenshot'),
+  uploadPaymentScreenshot
+);
+router.get('/status/:appointmentId', authenticateToken, authorizeRoles(['patient']), getPaymentStatus);
+router.get('/my-payments', authenticateToken, authorizeRoles(['patient']), getMyPayments);
 
-// Protected routes - Require authentication AND patient role
-router.use(authenticateToken);
-router.use(authorizeRoles(['patient'])); // This replaces patientOnly
-
-router.post('/create-order', createPaymentOrder);
-router.get('/status/:orderId', getPaymentStatus);
-router.get('/my-payments', getMyPayments);
-router.get('/receipt/:appointmentId', generatePaymentSlip);
+// Admin routes
+router.get('/admin/pending', authenticateToken, authorizeRoles(['admin']), getPendingPayments);
+router.put('/admin/verify-payment/:paymentId', authenticateToken, authorizeRoles(['admin']), verifyPaymentAndConfirmAppointment);
 
 module.exports = router;

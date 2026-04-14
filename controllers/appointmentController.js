@@ -393,6 +393,65 @@ const uploadReports = async (req, res) => {
   }
 };
 
+// Add this function to your appointmentController.js
+
+// @desc    Get pending appointment with payment status
+// @route   GET /api/appointments/pending-payment/:appointmentId
+const getPendingAppointmentWithPayment = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { appointmentId } = req.params;
+
+    const appointment = await Appointment.findOne({
+      _id: appointmentId,
+      'patient.userId': userId,
+      status: 'pending'
+    });
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pending appointment not found'
+      });
+    }
+
+    // Check if payment already exists
+    const existingPayment = await Payment.findOne({ 
+      appointmentId: appointment._id 
+    });
+
+    const consultationFee = appointment.doctor.consultationFee || 500;
+    const convenienceFee = Math.round(consultationFee * 0.02);
+    const totalAmount = consultationFee + convenienceFee;
+
+    res.json({
+      success: true,
+      data: {
+        appointmentId: appointment._id,
+        appointmentIdDisplay: appointment.appointmentId,
+        doctor: appointment.doctor,
+        appointmentDate: appointment.appointmentDate,
+        appointmentTime: appointment.appointmentTime,
+        reasonForVisit: appointment.reasonForVisit,
+        paymentDetails: {
+          consultationFee,
+          convenienceFee,
+          totalAmount,
+          status: existingPayment ? existingPayment.paymentStatus : 'not_started',
+          paymentId: existingPayment?.paymentId
+        },
+        expiresAt: appointment.expiresAt
+      }
+    });
+
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+};
+
 
 
 module.exports = {
@@ -402,5 +461,6 @@ module.exports = {
   getConfirmedAppointment,
   getMyAppointments,
   cancelAppointment,
-  uploadReports 
+  uploadReports,
+  getPendingAppointmentWithPayment
 };
