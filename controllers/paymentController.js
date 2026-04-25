@@ -6,13 +6,12 @@ const mongoose = require('mongoose');
 const fs = require('fs');
 const path = require('path');
 
-// @desc    Get QR Code details for payment
+// @desc    Get payment details (without QR - QR is static in UI)
 // @route   GET /api/payments/qr-details
 const getQRPaymentDetails = async (req, res) => {
   try {
     const { appointmentId } = req.query;
     
-    // Get appointment to fetch amount
     const appointment = await Appointment.findById(appointmentId);
     
     if (!appointment) {
@@ -26,22 +25,15 @@ const getQRPaymentDetails = async (req, res) => {
     const convenienceFee = Math.round(consultationFee * 0.02);
     const totalAmount = consultationFee + convenienceFee;
 
+    // Return only amount details - QR is static in frontend
     res.json({
       success: true,
       data: {
-        upiId: 'yourbusiness@upi', // Replace with your actual UPI ID
-        upiName: 'Your Business Name',
         amount: totalAmount,
         consultationFee,
         convenienceFee,
-        qrCodeUrl: '/images/payment-qr.png', // Path to your QR code image in public folder
-        instructions: [
-          '1. Scan the QR code using any UPI app (Google Pay, PhonePe, Paytm, etc.)',
-          '2. Verify the payee name and amount',
-          '3. Complete the payment',
-          '4. Take a screenshot of the payment success screen',
-          '5. Upload the screenshot below'
-        ]
+        upiId: 'yourbusiness@upi', // Your actual UPI ID
+        upiName: 'Your Business Name'
       }
     });
   } catch (error) {
@@ -62,7 +54,6 @@ const uploadPaymentScreenshot = async (req, res) => {
     const userId = req.user.userId;
     const { appointmentId, transactionId, transactionReference, paymentTime } = req.body;
     
-    // Check if file was uploaded
     if (!req.file) {
       return res.status(400).json({
         success: false,
@@ -70,113 +61,109 @@ const uploadPaymentScreenshot = async (req, res) => {
       });
     }
 
-    // Get appointment details
+    // Get appointment
     const appointment = await Appointment.findOne({
       _id: appointmentId,
-      'patient.userId': userId,
-      status: 'pending'
+      'patient.userId': userId
     }).session(session);
 
     if (!appointment) {
-      // Clean up uploaded file
-      fs.unlinkSync(req.file.path);
+      if (req.file && req.file.path) fs.unlinkSync(req.file.path);
       return res.status(404).json({
         success: false,
-        error: 'Pending appointment not found'
-      });
-    }
-
-    // Check if appointment expired
-    if (appointment.expiresAt && new Date() > appointment.expiresAt) {
-      appointment.status = 'expired';
-      await appointment.save({ session });
-      fs.unlinkSync(req.file.path);
-      
-      return res.status(400).json({
-        success: false,
-        error: 'Appointment request expired. Please book again.'
+        error: 'Appointment not found'
       });
     }
 
     // Check if payment already exists
     const existingPayment = await Payment.findOne({ 
-      appointmentId: appointment._id,
-      paymentStatus: { $in: ['pending', 'paid'] }
+      appointmentId: appointment._id 
     }).session(session);
 
-    if (existingPayment) {
-      fs.unlinkSync(req.file.path);
+    if (existingPayment && existingPayment.paymentStatus === 'paid') {
+      if (req.file && req.file.path) fs.unlinkSync(req.file.path);
       return res.status(400).json({
         success: false,
-        error: 'Payment already submitted for this appointment'
+        error: 'Payment already completed for this appointment'
       });
     }
 
-    // Calculate fees
     const consultationFee = appointment.doctor.consultationFee || 500;
     const convenienceFee = Math.round(consultationFee * 0.02);
     const totalAmount = consultationFee + convenienceFee;
 
-    // Get patient details
     const patient = await Patient.findOne({ userId }).session(session);
 
-    // Create payment record with pending status
-    const payment = await Payment.create([{
-      appointmentId: appointment._id,
-      patient: {
-        patientId: patient._id,
-        userId: patient.userId,
-        name: patient.name,
-        email: patient.email,
-        phone: patient.phone
-      },
-      doctor: {
-        doctorId: appointment.doctor.doctorId,
-        name: appointment.doctor.name,
-        specialization: appointment.doctor.specialization
-      },
-      amount: consultationFee,
-      consultationFee,
-      convenienceFee,
-      totalAmount,
-      paymentStatus: 'pending',
-      qrPayment: {
-        upiId: 'yourbusiness@upi',
-        upiName: 'Your Business Name',
-        transactionId: transactionId || `TXN_${Date.now()}`,
-        transactionReference: transactionReference || '',
-        paymentTime: paymentTime ? new Date(paymentTime) : new Date(),
-        uploadedScreenshot: {
-          fileName: req.file.originalname,
-          fileUrl: `/uploads/payments/${req.file.filename}`,
-          uploadedAt: new Date()
+    // Create or update payment record
+    let payment;
+    
+    if (existingPayment) {
+      // Update existing payment
+      existingPayment.qrPayment.transactionId = transactionId;
+      existingPayment.qrPayment.transactionReference = transactionReference || '';
+      existingPayment.qrPayment.paymentTime = paymentTime ? new Date(paymentTime) : new Date();
+      existingPayment.qrPayment.uploadedScreenshot = {
+        fileName: req.file.originalname,
+        fileUrl: `/uploads/payments/${req.file.filename}`,
+        uploadedAt: new Date()
+      };
+      existingPayment.paymentStatus = 'pending';
+      await existingPayment.save({ session });
+      payment = existingPayment;
+    } else {
+      // Create new payment
+      payment = await Payment.create([{
+        appointmentId: appointment._id,
+        patient: {
+          patientId: patient._id,
+          userId: patient.userId,
+          name: patient.name,
+          email: patient.email,
+          phone: patient.phone
+        },
+        doctor: {
+          doctorId: appointment.doctor.doctorId,
+          name: appointment.doctor.name,
+          specialization: appointment.doctor.specialization
+        },
+        amount: consultationFee,
+        consultationFee,
+        convenienceFee,
+        totalAmount,
+        paymentStatus: 'pending',
+        qrPayment: {
+          upiId: 'yourbusiness@upi',
+          upiName: 'Your Business Name',
+          transactionId: transactionId,
+          transactionReference: transactionReference || '',
+          paymentTime: paymentTime ? new Date(paymentTime) : new Date(),
+          uploadedScreenshot: {
+            fileName: req.file.originalname,
+            fileUrl: `/uploads/payments/${req.file.filename}`,
+            uploadedAt: new Date()
+          }
         }
-      }
-    }], { session });
+      }], { session });
+      payment = payment[0];
+    }
 
     await session.commitTransaction();
 
     res.json({
       success: true,
-      message: 'Payment screenshot uploaded successfully. Your payment is pending verification.',
+      message: 'Payment screenshot uploaded. Your appointment is pending verification.',
       data: {
-        paymentId: payment[0].paymentId,
-        paymentStatus: 'pending_verification',
-        message: 'Our team will verify your payment within 24 hours. You will receive a confirmation once verified.'
+        paymentId: payment.paymentId,
+        paymentStatus: 'pending_verification'
       }
     });
 
   } catch (error) {
     await session.abortTransaction();
-    // Clean up uploaded file if there was an error
     if (req.file && req.file.path) {
-      try {
-        fs.unlinkSync(req.file.path);
-      } catch (unlinkError) {
-        console.error('Error deleting file:', unlinkError);
-      }
+      try { fs.unlinkSync(req.file.path); } catch(e) {}
     }
-    console.error('Error uploading payment screenshot:', error);
+    console.error('Error:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -329,14 +316,12 @@ const getPaymentStatus = async (req, res) => {
         appointmentStatus: appointment?.status,
         doctorName: payment.doctor.name,
         patientName: payment.patient.name,
-        uploadedScreenshot: payment.qrPayment.uploadedScreenshot,
+        uploadedScreenshot: payment.qrPayment?.uploadedScreenshot,
         verificationStatus: payment.paymentStatus === 'pending' ? 'under_review' : 
                            payment.paymentStatus === 'paid' ? 'verified' : 'rejected',
-        verificationNotes: payment.qrPayment.verificationNotes,
         paymentDate: payment.paymentDate
       }
     });
-
   } catch (error) {
     res.status(500).json({
       success: false,
@@ -344,6 +329,7 @@ const getPaymentStatus = async (req, res) => {
     });
   }
 };
+
 
 // @desc    Get all pending payments (Admin)
 // @route   GET /api/payments/admin/pending

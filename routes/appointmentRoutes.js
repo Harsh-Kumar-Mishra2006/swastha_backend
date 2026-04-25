@@ -11,29 +11,26 @@ const {
   getConfirmedAppointment,
   getMyAppointments,
   cancelAppointment,
-  uploadReports, // Now this exists!
-  getPendingAppointmentWithPayment // Add this
-
+  uploadReports,
+  getPendingAppointmentWithPayment
 } = require('../controllers/appointmentController');
 
-// All routes require authentication and patient role
-router.use(authenticateToken);
-router.use(authorizeRoles(['patient']));
+// Apply auth middleware to each route individually (not globally)
+// This prevents middleware issues
 
-// Appointment routes
-router.get('/check-availability', checkAvailability);
-router.get('/book-form/:doctorId', getAppointmentFormData);
-router.post('/create-pending', createPendingAppointment);
-router.get('/confirmed/:appointmentId', getConfirmedAppointment);
-router.get('/my-appointments', getMyAppointments);
-router.put('/cancel/:appointmentId', cancelAppointment);
-// Add this to your appointmentRoutes.js
-router.get('/pending-payment/:appointmentId', getPendingAppointmentWithPayment);
-
-// Fixed upload route - now with controller function
+// Public availability check (no auth needed? Keep as is or add)
+router.get('/check-availability', authenticateToken, authorizeRoles(['patient']), checkAvailability);
+router.get('/book-form/:doctorId', authenticateToken, authorizeRoles(['patient']), getAppointmentFormData);
+router.post('/create-pending', authenticateToken, authorizeRoles(['patient']), createPendingAppointment);
+router.get('/confirmed/:appointmentId', authenticateToken, authorizeRoles(['patient']), getConfirmedAppointment);
+router.get('/my-appointments', authenticateToken, authorizeRoles(['patient']), getMyAppointments);
+router.put('/cancel/:appointmentId', authenticateToken, authorizeRoles(['patient']), cancelAppointment);
+router.get('/pending-payment/:appointmentId', authenticateToken, authorizeRoles(['patient']), getPendingAppointmentWithPayment);
 router.post('/upload-reports/:appointmentId', 
+  authenticateToken, 
+  authorizeRoles(['patient']),
   upload.array('reports', 5), 
-  uploadReports // Added the missing controller
+  uploadReports
 );
 
 module.exports = router;
