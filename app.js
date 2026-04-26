@@ -51,6 +51,22 @@ app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Add this after app.use(express.urlencoded...)
+app.get('/api/debug', (req, res) => {
+  res.json({
+    message: 'Backend is running!',
+    registeredRoutes: [
+      '/api/auth',
+      '/api/appointments',
+      '/api/payments'
+    ]
+  });
+});
+
+// Also add a test endpoint for appointments
+app.get('/api/appointments/test', (req, res) => {
+  res.json({ message: 'Appointments route is working!' });
+});
 // Your routes
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
