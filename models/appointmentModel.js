@@ -2,123 +2,85 @@
 const mongoose = require('mongoose');
 
 const appointmentSchema = new mongoose.Schema({
-  appointmentId: {
+  patient_email: {
     type: String,
-    unique: true,
+    required: true,
+    index: true
+  },
+  patient_name: {
+    type: String,
     required: true
   },
-  patient: {
-    patientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Patient',
-      required: true
-    },
-    userId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Auth',
-      required: true
-    },
-    name: String,
-    email: String,
-    phone: String,
-    age: Number,
-    gender: String
-  },
-  doctor: {
-    doctorId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Doctor',
-      required: true
-    },
-    name: String,
-    specialization: String,
-    consultationFee: Number
-  },
-  appointmentType: {
+  patient_phone: {
     type: String,
-    enum: ['visit', 'online'],
     required: true
   },
-  bookingType: {
+  doctor_email: {
     type: String,
-    enum: ['direct', 'paid'],
-    default: 'direct'
+    required: true,
+    index: true
   },
-  appointmentDate: {
+  doctor_name: {
+    type: String,
+    required: true
+  },
+  doctor_specialization: {
+    type: String,
+    required: true
+  },
+  appointment_date: {
     type: Date,
     required: true
   },
-  appointmentTime: {
-    slot: {
-      type: String,
-      required: true
-    },
-    duration: {
-      type: Number,
-      default: 30
-    }
-  },
-  status: {
+  appointment_time: {
     type: String,
-    enum: ['pending', 'confirmed', 'completed', 'cancelled', 'rescheduled', 'expired'],
+    required: true
+  },
+  symptoms: {
+    type: String,
+    default: ''
+  },
+  notes: {
+    type: String,
+    default: ''
+  },
+  // Payment related
+  amount: {
+    type: Number,
+    required: true,
+    default: 500 // Default consultation fee
+  },
+  screenshot_url: {
+    type: String,
+    required: true
+  },
+  screenshot_public_id: {
+    type: String
+  },
+  payment_status: {
+    type: String,
+    enum: ['pending', 'verified', 'failed'],
     default: 'pending'
   },
-  // ADD THIS - expiresAt field for pending appointments
-  expiresAt: {
-    type: Date,
-    default: function() {
-      return new Date(Date.now() + 30 * 60 * 1000); // 30 minutes from creation
-    }
-  },
-  reasonForVisit: {
+  // Appointment status
+  appointment_status: {
     type: String,
-    required: true
+    enum: ['pending', 'approved', 'rejected', 'cancelled', 'completed'],
+    default: 'pending'
   },
-  symptoms: [{
-    type: String
-  }],
-  diseaseDetails: {
-    primaryDisease: String,
-    duration: String,
-    severity: {
-      type: String,
-      enum: ['mild', 'moderate', 'severe']
-    }
+  // Doctor's response
+  doctor_notes: {
+    type: String,
+    default: ''
   },
-  reports: [{
-    fileName: String,
-    fileUrl: String,
-    fileType: String,
-    uploadedAt: {
-      type: Date,
-      default: Date.now
-    }
-  }],
-  payment: {
-    amount: Number,
-    status: {
-      type: String,
-      enum: ['pending', 'paid', 'refunded'],
-      default: 'pending'
-    },
-    method: String,
-    transactionId: String,
-    paidAt: Date
+  rejection_reason: {
+    type: String,
+    default: ''
   },
-  additionalNotes: String,
-  isFirstVisit: {
-    type: Boolean,
-    default: true
+  approval_date: {
+    type: Date
   },
-  followUpFrom: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Appointment'
-  },
-  createdBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Auth',
-    required: true
-  },
+  // Timestamps
   createdAt: {
     type: Date,
     default: Date.now
@@ -129,28 +91,8 @@ const appointmentSchema = new mongoose.Schema({
   }
 });
 
-// Generate unique appointment ID
-appointmentSchema.pre('save', async function(next) {
-  this.updatedAt = Date.now();
-  
-  if (!this.appointmentId) {
-    const date = new Date();
-    const year = date.getFullYear().toString().slice(-2);
-    const month = (date.getMonth() + 1).toString().padStart(2, '0');
-    const day = date.getDate().toString().padStart(2, '0');
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    this.appointmentId = `APT${year}${month}${day}${random}`;
-  }
-  
-  // Set expiresAt for pending appointments if not set
-  if (this.status === 'pending' && !this.expiresAt) {
-    this.expiresAt = new Date(Date.now() + 30 * 60 * 1000);
-  }
-  
-  next();
-});
-
-// Create TTL index to automatically expire pending appointments
-appointmentSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+// Index for faster queries
+appointmentSchema.index({ patient_email: 1, appointment_status: 1 });
+appointmentSchema.index({ doctor_email: 1, appointment_status: 1 });
 
 module.exports = mongoose.model('Appointment', appointmentSchema);
