@@ -60,7 +60,7 @@ const bookAppointment = async (req, res) => {
 
     console.log('✅ Screenshot uploaded:', screenshotUrl);
 
-    // ✅ Check if patient exists
+    // ✅ Check if patient exists and get their ID
     const patient = await Auth.findOne({ email: patient_email });
     if (!patient) {
       return res.status(404).json({
@@ -97,8 +97,9 @@ const bookAppointment = async (req, res) => {
       });
     }
 
-    // ✅ Create appointment
+    // ✅ Create appointment with patientId
     const appointmentData = {
+      patientId: patient._id,  // ✅ Add patientId from Auth model
       patient_email,
       patient_name,
       patient_phone,
@@ -120,12 +121,14 @@ const bookAppointment = async (req, res) => {
     await appointment.save();
 
     console.log('✅ Appointment created:', appointment._id);
+    console.log('✅ Patient ID:', patient._id);
 
     res.status(201).json({
       success: true,
       message: 'Appointment booked successfully! Waiting for doctor approval.',
       data: {
         appointment_id: appointment._id,
+        patientId: appointment.patientId,
         patient_name: appointment.patient_name,
         doctor_name: appointment.doctor_name,
         appointment_date: appointment.appointment_date,
@@ -144,7 +147,7 @@ const bookAppointment = async (req, res) => {
   }
 };
 
-// 📌 GET PATIENT APPOINTMENTS
+// 📌 GET PATIENT APPOINTMENTS (Updated to use patientId)
 const getPatientAppointments = async (req, res) => {
   try {
     const { patient_email } = req.params;
@@ -156,7 +159,19 @@ const getPatientAppointments = async (req, res) => {
       });
     }
 
-    const appointments = await Appointment.find({ patient_email })
+    // Get patient by email to get their ID
+    const patient = await Auth.findOne({ email: patient_email });
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        error: 'Patient not found'
+      });
+    }
+
+    const appointments = await Appointment.find({ 
+      patientId: patient._id 
+    })
+      .populate('patientId', 'name email phone profile') // Populate patient details
       .sort({ createdAt: -1 });
 
     res.json({
@@ -195,6 +210,7 @@ const getDoctorAppointments = async (req, res) => {
     }
 
     const appointments = await Appointment.find(query)
+      .populate('patientId', 'name email phone profile') // ✅ Populate patient details
       .sort({ createdAt: -1 });
 
     // Get statistics
@@ -220,6 +236,36 @@ const getDoctorAppointments = async (req, res) => {
     });
   }
 };
+
+// 📌 GET APPOINTMENT DETAILS (Updated with populate)
+const getAppointmentDetails = async (req, res) => {
+  try {
+    const { appointmentId } = req.params;
+
+    const appointment = await Appointment.findById(appointmentId)
+      .populate('patientId', 'name email phone profile'); // ✅ Populate patient details
+
+    if (!appointment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Appointment not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: appointment
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching appointment details:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch appointment details'
+    });
+  }
+};
+
 
 // 📌 APPROVE APPOINTMENT (Doctor)
 const approveAppointment = async (req, res) => {
@@ -320,33 +366,6 @@ const rejectAppointment = async (req, res) => {
   }
 };
 
-// 📌 GET APPOINTMENT DETAILS
-const getAppointmentDetails = async (req, res) => {
-  try {
-    const { appointmentId } = req.params;
-
-    const appointment = await Appointment.findById(appointmentId);
-
-    if (!appointment) {
-      return res.status(404).json({
-        success: false,
-        error: 'Appointment not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: appointment
-    });
-
-  } catch (error) {
-    console.error('❌ Error fetching appointment details:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch appointment details'
-    });
-  }
-};
 
 // 📌 CANCEL APPOINTMENT (Patient)
 const cancelAppointment = async (req, res) => {

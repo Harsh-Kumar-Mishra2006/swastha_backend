@@ -2,6 +2,13 @@
 const mongoose = require('mongoose');
 
 const appointmentSchema = new mongoose.Schema({
+  // ✅ Add patientId field
+  patientId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Auth',
+    required: true,
+    index: true
+  },
   patient_email: {
     type: String,
     required: true,
@@ -48,7 +55,7 @@ const appointmentSchema = new mongoose.Schema({
   amount: {
     type: Number,
     required: true,
-    default: 500 // Default consultation fee
+    default: 500
   },
   screenshot_url: {
     type: String,
@@ -92,6 +99,7 @@ const appointmentSchema = new mongoose.Schema({
 });
 
 // Index for faster queries
+appointmentSchema.index({ patientId: 1, appointment_status: 1 });
 appointmentSchema.index({ patient_email: 1, appointment_status: 1 });
 appointmentSchema.index({ doctor_email: 1, appointment_status: 1 });
 
