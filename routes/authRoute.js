@@ -2,7 +2,7 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const { login, signup, logout, getProfile, updateProfile, checkDoctorAuthorization, checkMLTAuthorization, debugToken } = require('../controllers/authController');
-const authenticateToken = require('../middlewares/authMiddleware'); 
+const {authenticateToken} = require('../middlewares/authMiddleware'); 
 const auth = require('../models/authModel'); // Fixed: changed 'Auth' to 'auth'
 const doctor = require('../models/doctorModel');
 const router = express.Router();

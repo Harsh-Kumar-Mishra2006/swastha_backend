@@ -1,49 +1,144 @@
 // routes/testReportRoutes.js
 const express = require('express');
 const router = express.Router();
-const authenticateToken = require('../middlewares/authMiddleware');
-const authorizeRoles = require('../middlewares/roleMiddleware');
+const multer = require('multer');
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const cloudinary = require('cloudinary').v2;
+const {authenticateToken} = require('../middlewares/authMiddleware');
+const { requireRole } = require('../middlewares/authMiddleware');
 const {
-  // Doctor endpoints
-  createReport,
-  getDoctorReports,
-  getDoctorReportById,
-  updateDoctorReport,
-  assignToMLT,
-  
-  // MLT endpoints
-  getMLTReports,
-  getMLTReportById,
-  acceptReport,
-  updateTestResult,
-  completeReport,
-  
-  // Shared endpoints
-  getReportById,
-  getAvailableMLTs
+  createTestRequest,
+  getDoctorTestRequests,
+  getMLTTestRequests,
+  startTest,
+  submitTestResults,
+  acceptAssignment,
+  rejectAssignment,
+  getTestRequestDetails,
+  getTestStatistics,
+  getPatientsForDoctor
 } = require('../controllers/testReportController');
 
-// ==================== DOCTOR ONLY ROUTES ====================
-router.use(authenticateToken);
+// ✅ Configure Cloudinary for test reports
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'your-cloud-name',
+  api_key: process.env.CLOUDINARY_API_KEY || 'your-api-key',
+  api_secret: process.env.CLOUDINARY_API_SECRET || 'your-api-secret'
+});
 
-// Get available MLTs (both roles can see)
-router.get('/available-mlts', getAvailableMLTs);
+// ✅ Configure Multer with Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'test_reports',
+    allowed_formats: ['jpg', 'png', 'jpeg', 'pdf', 'doc', 'docx'],
+    transformation: [{ width: 2000, height: 2000, crop: 'limit' }]
+  }
+});
 
-// Doctor specific routes
-router.post('/create', authorizeRoles(['doctor']), createReport);
-router.get('/doctor/my-reports', authorizeRoles(['doctor']), getDoctorReports);
-router.get('/doctor/:reportId', authorizeRoles(['doctor']), getDoctorReportById);
-router.put('/doctor/:reportId', authorizeRoles(['doctor']), updateDoctorReport);
-router.post('/doctor/:reportId/assign', authorizeRoles(['doctor']), assignToMLT);
+const upload = multer({
+  storage: storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/', 'application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    if (allowedTypes.some(type => file.mimetype.startsWith(type) || file.mimetype === type)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only images, PDF, and Word documents are allowed'), false);
+    }
+  }
+});
 
-// MLT specific routes
-router.get('/mlt/my-reports', authorizeRoles(['MLT']), getMLTReports);
-router.get('/mlt/:reportId', authorizeRoles(['MLT']), getMLTReportById);
-router.put('/mlt/:reportId/accept', authorizeRoles(['MLT']), acceptReport);
-router.put('/mlt/:reportId/tests/:testIndex', authorizeRoles(['MLT']), updateTestResult);
-router.put('/mlt/:reportId/complete', authorizeRoles(['MLT']), completeReport);
+// ====================
+// DOCTOR ROUTES
+// ====================
 
-// Shared route (both doctor and MLT can access their own reports)
-router.get('/:reportId', getReportById);
+// 📌 Create test request (Doctor)
+router.post(
+  '/create',
+  authenticateToken,
+  requireRole(['doctor']),
+  createTestRequest
+);
+
+// 📌 Get doctor's test requests
+router.get(
+  '/doctor/:doctorId',
+  authenticateToken,
+  requireRole(['doctor']),
+  getDoctorTestRequests
+);
+
+// 📌 Get doctor's test statistics
+router.get(
+  '/doctor/:doctorId/statistics',
+  authenticateToken,
+  requireRole(['doctor']),
+  getTestStatistics
+);
+
+// 📌 Get patients for doctor (for dropdown)
+router.get(
+  '/doctor/:doctorId/patients',
+  authenticateToken,
+  requireRole(['doctor']),
+  getPatientsForDoctor
+);
+
+// ====================
+// MLT ROUTES
+// ====================
+
+// 📌 Get MLT's assigned test requests
+router.get(
+  '/mlt/:mltId',
+  authenticateToken,
+  requireRole(['MLT']),
+  getMLTTestRequests
+);
+
+// 📌 Accept assignment (MLT)
+router.put(
+  '/:testId/accept',
+  authenticateToken,
+  requireRole(['MLT']),
+  acceptAssignment
+);
+
+// 📌 Reject assignment (MLT)
+router.put(
+  '/:testId/reject',
+  authenticateToken,
+  requireRole(['MLT']),
+  rejectAssignment
+);
+
+// 📌 Start test (MLT)
+router.put(
+  '/:testId/start',
+  authenticateToken,
+  requireRole(['MLT']),
+  startTest
+);
+
+// 📌 Submit test results (MLT)
+router.put(
+  '/:testId/submit',
+  authenticateToken,
+  requireRole(['MLT']),
+  upload.single('test_report_file'),
+  submitTestResults
+);
+
+// ====================
+// SHARED ROUTES
+// ====================
+
+// 📌 Get test request details
+router.get(
+  '/:testId',
+  authenticateToken,
+  getTestRequestDetails
+);
 
 module.exports = router;

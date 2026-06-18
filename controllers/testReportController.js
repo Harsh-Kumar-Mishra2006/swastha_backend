@@ -1,638 +1,664 @@
 // controllers/testReportController.js
 const TestReport = require('../models/testReportModel');
+const Auth = require('../models/authModel');
 const Doctor = require('../models/doctorModel');
 const MLT = require('../models/mltModel');
+const Appointment = require('../models/appointmentModel');
 const mongoose = require('mongoose');
 
-// ==================== DOCTOR CONTROLLERS ====================
-
-// @desc    Create new test report (Doctor)
-// @route   POST /api/reports/create
-const createReport = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+// 📌 DOCTOR: Create Test Request
+const createTestRequest = async (req, res) => {
+  console.log('🚀 CREATE TEST REQUEST - START');
+  console.log('📦 Request body:', req.body);
 
   try {
-    const doctorId = req.user.userId;
-    
-    // Get doctor details
-    const doctor = await Doctor.findOne({ userId: doctorId }).session(session);
+    const {
+      // Doctor info (from authenticated user)
+      doctorId,
+      doctor_name,
+      doctor_email,
+      doctor_specialization,
+      
+      // MLT to assign
+      mltId,
+      mlt_name,
+      mlt_email,
+      mlt_specialization,
+      
+      // Patient info
+      patientId,
+      patient_name,
+      patient_email,
+      patient_phone,
+      patient_age,
+      patient_gender,
+      patient_bloodGroup,
+      
+      // Appointment reference
+      appointmentId,
+      
+      // Test details
+      test_name,
+      test_category,
+      test_description,
+      test_priority,
+      test_instructions,
+      
+      // Clinical details
+      suspected_disease,
+      symptoms,
+      clinical_notes,
+      medical_history,
+      
+      // Medications
+      medications
+    } = req.body;
+
+    // ✅ VALIDATION
+    if (!doctorId || !doctor_email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Doctor information is required'
+      });
+    }
+
+    if (!mltId || !mlt_email) {
+      return res.status(400).json({
+        success: false,
+        error: 'MLT information is required'
+      });
+    }
+
+    if (!patientId || !patient_email || !patient_name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Patient information is required'
+      });
+    }
+
+    if (!test_name || !test_category) {
+      return res.status(400).json({
+        success: false,
+        error: 'Test name and category are required'
+      });
+    }
+
+    // ✅ Check if doctor exists and is active
+    const doctor = await Doctor.findOne({ 
+      email: doctor_email,
+      status: 'active'
+    });
     if (!doctor) {
       return res.status(404).json({
         success: false,
-        error: 'Doctor not found'
+        error: 'Doctor not found or not active'
       });
     }
 
-    const {
-      patientName,
-      patientEmail,
-      patientPhone,
-      patientAge,
-      patientGender,
-      condition,
-      disease,
-      reportDescription,
-      doctorNotes,
-      tests,
-      priority,
-      additionalNotes
-    } = req.body;
-
-    // Validate required fields
-    if (!patientName || !patientEmail || !condition || !disease || !reportDescription) {
-      return res.status(400).json({
+    // ✅ Check if MLT exists and is active
+    const mlt = await MLT.findOne({ 
+      email: mlt_email,
+      status: 'active'
+    });
+    if (!mlt) {
+      return res.status(404).json({
         success: false,
-        error: 'Missing required fields: patientName, patientEmail, condition, disease, reportDescription'
+        error: 'MLT not found or not active'
       });
     }
 
-    // Create report
-    const report = await TestReport.create([{
-      patient: {
-        name: patientName,
-        email: patientEmail,
-        phone: patientPhone || '',
-        age: patientAge || null,
-        gender: patientGender || 'not_specified'
-      },
-      doctor: {
-        doctorId: doctor._id,
-        name: doctor.name,
-        email: doctor.email,
-        specialization: doctor.specialization
-      },
-      condition,
-      disease,
-      reportDescription,
-      doctorNotes: doctorNotes || '',
-      additionalNotes: additionalNotes || '',
-      tests: tests || [],
-      priority: priority || 'normal',
-      status: 'pending',
-      createdBy: doctorId
-    }], { session });
+    // ✅ Check if patient exists
+    const patient = await Auth.findOne({ email: patient_email });
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        error: 'Patient not found'
+      });
+    }
 
-    await session.commitTransaction();
+    // ✅ Check if appointment exists (if provided)
+    if (appointmentId) {
+      const appointment = await Appointment.findById(appointmentId);
+      if (!appointment) {
+        return res.status(404).json({
+          success: false,
+          error: 'Appointment not found'
+        });
+      }
+    }
+
+    // ✅ Create test request
+    const testData = {
+      doctorId,
+      doctor_name,
+      doctor_email,
+      doctor_specialization,
+      mltId,
+      mlt_name,
+      mlt_email,
+      mlt_specialization,
+      patientId,
+      patient_name,
+      patient_email,
+      patient_phone,
+      patient_age: patient_age || '',
+      patient_gender: patient_gender || '',
+      patient_bloodGroup: patient_bloodGroup || '',
+      appointmentId: appointmentId || null,
+      test_name,
+      test_category,
+      test_description: test_description || '',
+      test_priority: test_priority || 'routine',
+      test_instructions: test_instructions || '',
+      suspected_disease: suspected_disease || '',
+      symptoms: symptoms || '',
+      clinical_notes: clinical_notes || '',
+      medical_history: medical_history || '',
+      medications: medications || [],
+      status: 'pending'
+    };
+
+    const testReport = new TestReport(testData);
+    await testReport.save();
+
+    console.log('✅ Test request created:', testReport._id);
 
     res.status(201).json({
       success: true,
-      message: 'Test report created successfully',
-      data: {
-        reportId: report[0].reportId,
-        report: report[0]
-      }
+      message: 'Test request created successfully! Assigned to MLT.',
+      data: testReport
     });
 
   } catch (error) {
-    await session.abortTransaction();
-    console.error('Error creating report:', error);
+    console.error('❌ Error creating test request:', error);
     res.status(500).json({
       success: false,
-      error: error.message
-    });
-  } finally {
-    session.endSession();
-  }
-};
-
-// @desc    Get all reports created by a doctor
-// @route   GET /api/reports/doctor/my-reports
-const getDoctorReports = async (req, res) => {
-  try {
-    const doctorId = req.user.userId;
-    
-    const doctor = await Doctor.findOne({ userId: doctorId });
-    if (!doctor) {
-      return res.status(404).json({
-        success: false,
-        error: 'Doctor not found'
-      });
-    }
-
-    const { status, page = 1, limit = 20 } = req.query;
-    const query = { 'doctor.doctorId': doctor._id };
-    
-    if (status) {
-      query.status = status;
-    }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const reports = await TestReport.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await TestReport.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: reports,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
-      }
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
+      error: 'Failed to create test request: ' + error.message
     });
   }
 };
 
-// @desc    Get single report by ID (Doctor)
-// @route   GET /api/reports/doctor/:reportId
-const getDoctorReportById = async (req, res) => {
+// 📌 DOCTOR: Get All Test Requests (with filters)
+const getDoctorTestRequests = async (req, res) => {
   try {
-    const doctorId = req.user.userId;
-    const { reportId } = req.params;
+    const { doctorId } = req.params;
+    const { status, category, patientId } = req.query;
 
-    const doctor = await Doctor.findOne({ userId: doctorId });
-    if (!doctor) {
-      return res.status(404).json({
-        success: false,
-        error: 'Doctor not found'
-      });
-    }
-
-    const report = await TestReport.findOne({
-      reportId: reportId,
-      'doctor.doctorId': doctor._id
-    });
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        error: 'Report not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: report
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
-
-// @desc    Update report (Doctor)
-// @route   PUT /api/reports/doctor/:reportId
-const updateDoctorReport = async (req, res) => {
-  try {
-    const doctorId = req.user.userId;
-    const { reportId } = req.params;
-    const updates = req.body;
-
-    const doctor = await Doctor.findOne({ userId: doctorId });
-    if (!doctor) {
-      return res.status(404).json({
-        success: false,
-        error: 'Doctor not found'
-      });
-    }
-
-    const report = await TestReport.findOne({
-      reportId: reportId,
-      'doctor.doctorId': doctor._id
-    });
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        error: 'Report not found'
-      });
-    }
-
-    // Update allowed fields
-    const allowedUpdates = ['condition', 'disease', 'reportDescription', 'doctorNotes', 'tests', 'priority', 'additionalNotes'];
-    allowedUpdates.forEach(field => {
-      if (updates[field] !== undefined) {
-        report[field] = updates[field];
-      }
-    });
-
-    report.updatedAt = Date.now();
-    await report.save();
-
-    res.json({
-      success: true,
-      message: 'Report updated successfully',
-      data: report
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
-
-// @desc    Assign report to MLT (Doctor)
-// @route   POST /api/reports/doctor/:reportId/assign
-const assignToMLT = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
-    const doctorId = req.user.userId;
-    const { reportId } = req.params;
-    const { mltId } = req.body;
-
-    const doctor = await Doctor.findOne({ userId: doctorId }).session(session);
-    if (!doctor) {
-      return res.status(404).json({
-        success: false,
-        error: 'Doctor not found'
-      });
-    }
-
-    const mlt = await MLT.findById(mltId).session(session);
-    if (!mlt || mlt.status !== 'active') {
-      return res.status(404).json({
-        success: false,
-        error: 'MLT not found or inactive'
-      });
-    }
-
-    const report = await TestReport.findOne({
-      reportId: reportId,
-      'doctor.doctorId': doctor._id
-    }).session(session);
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        error: 'Report not found'
-      });
-    }
-
-    report.mlt = {
-      mltId: mlt._id,
-      name: mlt.name,
-      email: mlt.email,
-      assignedAt: new Date()
-    };
-    report.status = 'assigned';
-    report.updatedAt = Date.now();
-    await report.save({ session });
-
-    await session.commitTransaction();
-
-    res.json({
-      success: true,
-      message: `Report assigned to MLT ${mlt.name}`,
-      data: report
-    });
-
-  } catch (error) {
-    await session.abortTransaction();
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  } finally {
-    session.endSession();
-  }
-};
-
-// ==================== MLT CONTROLLERS ====================
-
-// @desc    Get all reports assigned to MLT
-// @route   GET /api/reports/mlt/my-reports
-const getMLTReports = async (req, res) => {
-  try {
-    const mltId = req.user.userId;
-    
-    const mlt = await MLT.findOne({ userId: mltId });
-    if (!mlt) {
-      return res.status(404).json({
-        success: false,
-        error: 'MLT not found'
-      });
-    }
-
-    const { status, page = 1, limit = 20 } = req.query;
-    const query = { 'mlt.mltId': mlt._id };
-    
-    if (status) {
-      query.status = status;
-    }
-
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-
-    const reports = await TestReport.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const total = await TestReport.countDocuments(query);
-
-    res.json({
-      success: true,
-      data: reports,
-      pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / parseInt(limit))
-      }
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
-
-// @desc    Get single report for MLT
-// @route   GET /api/reports/mlt/:reportId
-const getMLTReportById = async (req, res) => {
-  try {
-    const mltId = req.user.userId;
-    const { reportId } = req.params;
-
-    const mlt = await MLT.findOne({ userId: mltId });
-    if (!mlt) {
-      return res.status(404).json({
-        success: false,
-        error: 'MLT not found'
-      });
-    }
-
-    const report = await TestReport.findOne({
-      reportId: reportId,
-      'mlt.mltId': mlt._id
-    });
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        error: 'Report not found or not assigned to you'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: report
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
-
-// @desc    Accept report assignment (MLT)
-// @route   PUT /api/reports/mlt/:reportId/accept
-const acceptReport = async (req, res) => {
-  try {
-    const mltId = req.user.userId;
-    const { reportId } = req.params;
-
-    const mlt = await MLT.findOne({ userId: mltId });
-    if (!mlt) {
-      return res.status(404).json({
-        success: false,
-        error: 'MLT not found'
-      });
-    }
-
-    const report = await TestReport.findOne({
-      reportId: reportId,
-      'mlt.mltId': mlt._id,
-      status: 'assigned'
-    });
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        error: 'Report not found or not in assigned status'
-      });
-    }
-
-    report.status = 'in_progress';
-    report.mlt.acceptedAt = new Date();
-    report.updatedAt = Date.now();
-    await report.save();
-
-    res.json({
-      success: true,
-      message: 'Report accepted, you can now process the tests',
-      data: report
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
-  }
-};
-
-// @desc    Update test results (MLT)
-// @route   PUT /api/reports/mlt/:reportId/tests/:testIndex
-const updateTestResult = async (req, res) => {
-  try {
-    const mltId = req.user.userId;
-    const { reportId, testIndex } = req.params;
-    const { result, status } = req.body;
-
-    const mlt = await MLT.findOne({ userId: mltId });
-    if (!mlt) {
-      return res.status(404).json({
-        success: false,
-        error: 'MLT not found'
-      });
-    }
-
-    const report = await TestReport.findOne({
-      reportId: reportId,
-      'mlt.mltId': mlt._id
-    });
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        error: 'Report not found'
-      });
-    }
-
-    const index = parseInt(testIndex);
-    if (index >= 0 && index < report.tests.length) {
-      if (result !== undefined) report.tests[index].result = result;
-      if (status !== undefined) report.tests[index].status = status;
-      report.updatedAt = Date.now();
-      await report.save();
-    } else {
+    if (!doctorId) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid test index'
+        error: 'Doctor ID is required'
+      });
+    }
+
+    let query = { doctorId };
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (category) {
+      query.test_category = category;
+    }
+
+    if (patientId) {
+      query.patientId = patientId;
+    }
+
+    const testRequests = await TestReport.find(query)
+      .populate('patientId', 'name email phone profile')
+      .populate('mltId', 'name email specialization department')
+      .populate('appointmentId', 'appointment_date appointment_time')
+      .sort({ createdAt: -1 });
+
+    // Get statistics
+    const stats = {
+      total: testRequests.length,
+      pending: testRequests.filter(t => t.status === 'pending').length,
+      assigned: testRequests.filter(t => t.status === 'assigned').length,
+      'in-progress': testRequests.filter(t => t.status === 'in-progress').length,
+      completed: testRequests.filter(t => t.status === 'completed').length,
+      cancelled: testRequests.filter(t => t.status === 'cancelled').length
+    };
+
+    res.json({
+      success: true,
+      statistics: stats,
+      data: testRequests
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching doctor test requests:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch test requests'
+    });
+  }
+};
+
+// 📌 MLT: Get Assigned Test Requests
+const getMLTTestRequests = async (req, res) => {
+  try {
+    const { mltId } = req.params;
+    const { status, category } = req.query;
+
+    if (!mltId) {
+      return res.status(400).json({
+        success: false,
+        error: 'MLT ID is required'
+      });
+    }
+
+    let query = { mltId };
+
+    if (status) {
+      query.status = status;
+    }
+
+    if (category) {
+      query.test_category = category;
+    }
+
+    const testRequests = await TestReport.find(query)
+      .populate('patientId', 'name email phone profile')
+      .populate('doctorId', 'name email specialization')
+      .populate('appointmentId', 'appointment_date appointment_time symptoms')
+      .sort({ createdAt: -1 });
+
+    // Get statistics
+    const stats = {
+      total: testRequests.length,
+      pending: testRequests.filter(t => t.status === 'pending').length,
+      assigned: testRequests.filter(t => t.status === 'assigned').length,
+      'in-progress': testRequests.filter(t => t.status === 'in-progress').length,
+      completed: testRequests.filter(t => t.status === 'completed').length,
+      cancelled: testRequests.filter(t => t.status === 'cancelled').length
+    };
+
+    res.json({
+      success: true,
+      statistics: stats,
+      data: testRequests
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching MLT test requests:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch test requests'
+    });
+  }
+};
+
+// 📌 MLT: Accept/Start Test
+const startTest = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { mlt_notes } = req.body;
+
+    const testReport = await TestReport.findById(testId);
+
+    if (!testReport) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test request not found'
+      });
+    }
+
+    if (testReport.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        error: 'Test is already completed'
+      });
+    }
+
+    if (testReport.status === 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        error: 'Test has been cancelled'
+      });
+    }
+
+    testReport.status = 'in-progress';
+    testReport.mlt_notes = mlt_notes || 'Started working on test';
+    testReport.updatedAt = new Date();
+
+    await testReport.save();
+
+    res.json({
+      success: true,
+      message: 'Test started successfully',
+      data: testReport
+    });
+
+  } catch (error) {
+    console.error('❌ Error starting test:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to start test'
+    });
+  }
+};
+
+// 📌 MLT: Submit Test Results
+const submitTestResults = async (req, res) => {
+  console.log('🚀 SUBMIT TEST RESULTS - START');
+  console.log('📦 Request body:', req.body);
+  console.log('📁 File received:', req.file ? 'Yes' : 'No');
+
+  try {
+    const { testId } = req.params;
+    const {
+      test_results,
+      results_summary,
+      test_conclusion,
+      recommendations,
+      mlt_notes
+    } = req.body;
+
+    const testReport = await TestReport.findById(testId);
+
+    if (!testReport) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test request not found'
+      });
+    }
+
+    if (testReport.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        error: 'Test is already completed'
+      });
+    }
+
+    if (testReport.status === 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        error: 'Test has been cancelled'
+      });
+    }
+
+    // Update test results
+    const updateData = {
+      status: 'completed',
+      test_results: test_results || '',
+      results_summary: results_summary || '',
+      test_conclusion: test_conclusion || '',
+      recommendations: recommendations || '',
+      mlt_notes: mlt_notes || '',
+      completed_date: new Date(),
+      updatedAt: new Date()
+    };
+
+    // If file uploaded (report PDF/Image)
+    if (req.file) {
+      updateData.test_report_url = req.file.path;
+      updateData.test_report_public_id = req.file.filename;
+    }
+
+    const updatedTest = await TestReport.findByIdAndUpdate(
+      testId,
+      updateData,
+      { new: true }
+    );
+
+    console.log('✅ Test results submitted:', updatedTest._id);
+
+    res.json({
+      success: true,
+      message: 'Test results submitted successfully',
+      data: updatedTest
+    });
+
+  } catch (error) {
+    console.error('❌ Error submitting test results:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to submit test results'
+    });
+  }
+};
+
+// 📌 MLT: Accept Assignment
+const acceptAssignment = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { mlt_notes } = req.body;
+
+    const testReport = await TestReport.findById(testId);
+
+    if (!testReport) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test request not found'
+      });
+    }
+
+    if (testReport.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: `Test is already ${testReport.status}`
+      });
+    }
+
+    testReport.status = 'assigned';
+    testReport.mlt_notes = mlt_notes || 'Accepted assignment';
+    testReport.assigned_date = new Date();
+    testReport.updatedAt = new Date();
+
+    await testReport.save();
+
+    res.json({
+      success: true,
+      message: 'Test assignment accepted',
+      data: testReport
+    });
+
+  } catch (error) {
+    console.error('❌ Error accepting assignment:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to accept assignment'
+    });
+  }
+};
+
+// 📌 MLT: Reject Assignment
+const rejectAssignment = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const { rejection_reason } = req.body;
+
+    if (!rejection_reason) {
+      return res.status(400).json({
+        success: false,
+        error: 'Rejection reason is required'
+      });
+    }
+
+    const testReport = await TestReport.findById(testId);
+
+    if (!testReport) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test request not found'
+      });
+    }
+
+    if (testReport.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        error: `Test is already ${testReport.status}`
+      });
+    }
+
+    testReport.status = 'cancelled';
+    testReport.mlt_notes = `Rejected: ${rejection_reason}`;
+    testReport.updatedAt = new Date();
+
+    await testReport.save();
+
+    res.json({
+      success: true,
+      message: 'Test assignment rejected',
+      data: testReport
+    });
+
+  } catch (error) {
+    console.error('❌ Error rejecting assignment:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to reject assignment'
+    });
+  }
+};
+
+// 📌 Get Test Request Details
+const getTestRequestDetails = async (req, res) => {
+  try {
+    const { testId } = req.params;
+
+    const testReport = await TestReport.findById(testId)
+      .populate('patientId', 'name email phone profile')
+      .populate('doctorId', 'name email specialization')
+      .populate('mltId', 'name email specialization department')
+      .populate('appointmentId', 'appointment_date appointment_time symptoms');
+
+    if (!testReport) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test request not found'
       });
     }
 
     res.json({
       success: true,
-      message: 'Test result updated',
-      data: report
+      data: testReport
     });
 
   } catch (error) {
+    console.error('❌ Error fetching test details:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Failed to fetch test details'
     });
   }
 };
 
-// @desc    Complete report (MLT)
-// @route   PUT /api/reports/mlt/:reportId/complete
-const completeReport = async (req, res) => {
+// 📌 DOCTOR: Get Test Statistics
+const getTestStatistics = async (req, res) => {
   try {
-    const mltId = req.user.userId;
-    const { reportId } = req.params;
+    const { doctorId } = req.params;
 
-    const mlt = await MLT.findOne({ userId: mltId });
-    if (!mlt) {
-      return res.status(404).json({
-        success: false,
-        error: 'MLT not found'
-      });
-    }
+    const total = await TestReport.countDocuments({ doctorId });
+    const pending = await TestReport.countDocuments({ doctorId, status: 'pending' });
+    const assigned = await TestReport.countDocuments({ doctorId, status: 'assigned' });
+    const inProgress = await TestReport.countDocuments({ doctorId, status: 'in-progress' });
+    const completed = await TestReport.countDocuments({ doctorId, status: 'completed' });
+    const cancelled = await TestReport.countDocuments({ doctorId, status: 'cancelled' });
 
-    const report = await TestReport.findOne({
-      reportId: reportId,
-      'mlt.mltId': mlt._id,
-      status: { $in: ['assigned', 'in_progress'] }
-    });
+    // Tests by category
+    const byCategory = await TestReport.aggregate([
+      { $match: { doctorId: new mongoose.Types.ObjectId(doctorId) } },
+      {
+        $group: {
+          _id: '$test_category',
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
 
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        error: 'Report not found'
-      });
-    }
-
-    report.status = 'completed';
-    report.completedAt = new Date();
-    report.mlt.completedAt = new Date();
-    report.updatedAt = Date.now();
-    await report.save();
+    // Tests by MLT
+    const byMLT = await TestReport.aggregate([
+      { $match: { doctorId: new mongoose.Types.ObjectId(doctorId) } },
+      {
+        $group: {
+          _id: '$mlt_name',
+          count: { $sum: 1 },
+          completed: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
 
     res.json({
       success: true,
-      message: 'Report completed successfully',
-      data: report
+      data: {
+        total,
+        pending,
+        assigned,
+        inProgress,
+        completed,
+        cancelled,
+        byCategory,
+        byMLT
+      }
     });
 
   } catch (error) {
+    console.error('❌ Error fetching test statistics:', error);
     res.status(500).json({
       success: false,
-      error: error.message
+      error: 'Failed to fetch statistics'
     });
   }
 };
 
-// ==================== BOTH ROLES ====================
-
-// @desc    Get report by ID (if authorized - doctor or assigned MLT)
-// @route   GET /api/reports/:reportId
-const getReportById = async (req, res) => {
+// 📌 Get All Patients (for doctor dropdown)
+const getPatientsForDoctor = async (req, res) => {
   try {
-    const userId = req.user.userId;
-    const userRole = req.user.role;
-    const { reportId } = req.params;
+    const { doctorId } = req.params;
+    
+    // Get all patients who have appointments with this doctor
+    const appointments = await Appointment.find({ 
+      doctor_email: req.user?.email,
+      appointment_status: 'approved'
+    }).populate('patientId', 'name email phone profile');
 
-    let report = null;
-
-    if (userRole === 'doctor') {
-      const doctor = await Doctor.findOne({ userId });
-      if (doctor) {
-        report = await TestReport.findOne({
-          reportId: reportId,
-          'doctor.doctorId': doctor._id
+    // Get unique patients
+    const uniquePatients = [];
+    const seen = new Set();
+    
+    appointments.forEach(app => {
+      if (app.patientId && !seen.has(app.patientId._id.toString())) {
+        seen.add(app.patientId._id.toString());
+        uniquePatients.push({
+          _id: app.patientId._id,
+          name: app.patientId.name,
+          email: app.patientId.email,
+          phone: app.patientId.phone,
+          profile: app.patientId.profile
         });
       }
-    } else if (userRole === 'MLT') {
-      const mlt = await MLT.findOne({ userId });
-      if (mlt) {
-        report = await TestReport.findOne({
-          reportId: reportId,
-          'mlt.mltId': mlt._id
-        });
-      }
-    }
-
-    if (!report) {
-      return res.status(404).json({
-        success: false,
-        error: 'Report not found or access denied'
-      });
-    }
+    });
 
     res.json({
       success: true,
-      data: report
+      data: uniquePatients
     });
 
   } catch (error) {
+    console.error('❌ Error fetching patients:', error);
     res.status(500).json({
       success: false,
-      error: error.message
-    });
-  }
-};
-
-// @desc    Get available MLTs for assignment (Doctor)
-// @route   GET /api/reports/available-mlts
-const getAvailableMLTs = async (req, res) => {
-  try {
-    const mlts = await MLT.find({ status: 'active' })
-      .select('name email specialization department');
-
-    res.json({
-      success: true,
-      data: mlts
-    });
-
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      error: error.message
+      error: 'Failed to fetch patients'
     });
   }
 };
 
 module.exports = {
-  // Doctor endpoints
-  createReport,
-  getDoctorReports,
-  getDoctorReportById,
-  updateDoctorReport,
-  assignToMLT,
-  
-  // MLT endpoints
-  getMLTReports,
-  getMLTReportById,
-  acceptReport,
-  updateTestResult,
-  completeReport,
-  
-  // Shared endpoints
-  getReportById,
-  getAvailableMLTs
+  createTestRequest,
+  getDoctorTestRequests,
+  getMLTTestRequests,
+  startTest,
+  submitTestResults,
+  acceptAssignment,
+  rejectAssignment,
+  getTestRequestDetails,
+  getTestStatistics,
+  getPatientsForDoctor
 };

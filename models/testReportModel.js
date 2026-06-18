@@ -1,115 +1,182 @@
 // models/testReportModel.js
 const mongoose = require('mongoose');
 
-const testSchema = new mongoose.Schema({
-  testName: {
-    type: String,
-    required: true
-  },
-  testDescription: String,
-  referenceRange: String,
-  unit: String,
-  result: {
-    type: String,
-    default: 'pending'
-  },
-  status: {
-    type: String,
-    enum: ['pending', 'completed', 'reviewed'],
-    default: 'pending'
-  }
-});
-
 const testReportSchema = new mongoose.Schema({
-  reportId: {
-    type: String,
-    unique: true
+  // Doctor who requested the test
+  doctorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Auth',
+    required: true,
+    index: true
   },
-  
-  // Patient Info (flexible - works for both online and offline)
-  patient: {
-    name: {
-      type: String,
-      required: true
-    },
-    email: {
-      type: String,
-      required: true
-    },
-    phone: String,
-    age: Number,
-    gender: {
-      type: String,
-      enum: ['male', 'female', 'other', 'not_specified'],
-      default: 'not_specified'
-    },
-    // Optional: if patient is registered in system
-    patientId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Patient'
-    }
-  },
-  
-  // Doctor Info (who created the report)
-  doctor: {
-    doctorId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Doctor',
-      required: true
-    },
-    name: {
-      type: String,
-      required: true
-    },
-    email: String,
-    specialization: String
-  },
-  
-  // MLT Info (who will process)
-  mlt: {
-    mltId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'MLT'
-    },
-    name: String,
-    email: String,
-    assignedAt: Date,
-    acceptedAt: Date
-  },
-  
-  // Medical Details
-  condition: {
+  doctor_name: {
     type: String,
     required: true
   },
-  disease: {
+  doctor_email: {
     type: String,
     required: true
   },
-  reportDescription: {
+  doctor_specialization: {
     type: String,
     required: true
   },
-  doctorNotes: String,
-  additionalNotes: String,
-  
-  // Tests
-  tests: [testSchema],
-  
-  // Status
+
+  // MLT assigned to conduct the test
+  mltId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'MLT',
+    required: true,
+    index: true
+  },
+  mlt_name: {
+    type: String,
+    required: true
+  },
+  mlt_email: {
+    type: String,
+    required: true
+  },
+  mlt_specialization: {
+    type: String,
+    required: true
+  },
+
+  // Patient details
+  patientId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Auth',
+    required: true,
+    index: true
+  },
+  patient_name: {
+    type: String,
+    required: true
+  },
+  patient_email: {
+    type: String,
+    required: true
+  },
+  patient_phone: {
+    type: String,
+    required: true
+  },
+  patient_age: {
+    type: String,
+    default: ''
+  },
+  patient_gender: {
+    type: String,
+    default: ''
+  },
+  patient_bloodGroup: {
+    type: String,
+    default: ''
+  },
+
+  // Appointment reference (optional)
+  appointmentId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Appointment'
+  },
+
+  // Test details
+  test_name: {
+    type: String,
+    required: true
+  },
+  test_category: {
+    type: String,
+    enum: ['Hematology', 'Microbiology', 'Biochemistry', 'Pathology', 'Radiology', 'Immunology', 'Other'],
+    required: true
+  },
+  test_description: {
+    type: String,
+    default: ''
+  },
+  test_priority: {
+    type: String,
+    enum: ['routine', 'urgent', 'emergency'],
+    default: 'routine'
+  },
+  test_instructions: {
+    type: String,
+    default: ''
+  },
+
+  // Disease/Symptoms details
+  suspected_disease: {
+    type: String,
+    default: ''
+  },
+  symptoms: {
+    type: String,
+    default: ''
+  },
+  clinical_notes: {
+    type: String,
+    default: ''
+  },
+  medical_history: {
+    type: String,
+    default: ''
+  },
+
+  // Prescribed medications (if any)
+  medications: [{
+    name: { type: String },
+    dosage: { type: String },
+    frequency: { type: String },
+    duration: { type: String }
+  }],
+
+  // Test status
   status: {
     type: String,
-    enum: ['pending', 'assigned', 'in_progress', 'completed', 'cancelled'],
+    enum: ['pending', 'assigned', 'in-progress', 'completed', 'cancelled'],
     default: 'pending'
   },
-  
-  priority: {
+
+  // MLT's response/work
+  test_results: {
     type: String,
-    enum: ['normal', 'urgent', 'emergency'],
-    default: 'normal'
+    default: ''
   },
-  
+  test_report_url: {
+    type: String,
+    default: ''
+  },
+  test_report_public_id: {
+    type: String,
+    default: ''
+  },
+  mlt_notes: {
+    type: String,
+    default: ''
+  },
+
+  // Results summary
+  results_summary: {
+    type: String,
+    default: ''
+  },
+  test_conclusion: {
+    type: String,
+    default: ''
+  },
+  recommendations: {
+    type: String,
+    default: ''
+  },
+
   // Timestamps
+  assigned_date: {
+    type: Date,
+    default: Date.now
+  },
+  completed_date: {
+    type: Date
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -117,21 +184,14 @@ const testReportSchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now
-  },
-  completedAt: Date
+  }
 });
 
-// Generate unique report ID
-testReportSchema.pre('save', async function(next) {
-  this.updatedAt = Date.now();
-  
-  if (!this.reportId) {
-    const date = new Date();
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, '0');
-    this.reportId = `REP${Date.now().toString().slice(-8)}${random}`;
-  }
-  
-  next();
-});
+// Indexes for faster queries
+testReportSchema.index({ doctorId: 1, status: 1 });
+testReportSchema.index({ mltId: 1, status: 1 });
+testReportSchema.index({ patientId: 1, status: 1 });
+testReportSchema.index({ test_category: 1 });
+testReportSchema.index({ status: 1 });
 
 module.exports = mongoose.model('TestReport', testReportSchema);

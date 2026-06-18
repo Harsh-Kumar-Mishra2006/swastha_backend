@@ -20,7 +20,7 @@ const {
   resetMLTPassword,
   getMLTStats
 } = require('../controllers/adminController');
-const authenticateToken = require('../middlewares/authMiddleware');
+const {authenticateToken} = require('../middlewares/authMiddleware');
 const adminAuth = require('../middlewares/adminAuthMiddleware');
 
 const Doctor = require('../models/doctorModel');
