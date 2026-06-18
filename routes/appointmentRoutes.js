@@ -1,10 +1,7 @@
 // routes/appointmentRoutes.js
 const express = require('express');
 const router = express.Router();
-const multer = require('multer');
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
-const cloudinary = require('cloudinary').v2;
-const {authenticateToken} = require('../middlewares/authMiddleware');
+const { authenticateToken } = require('../middlewares/authMiddleware');
 const {
   bookAppointment,
   getPatientAppointments,
@@ -17,33 +14,14 @@ const {
   getAppointmentStats
 } = require('../controllers/appointmentController');
 
-// ✅ Configure Cloudinary
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME || 'your-cloud-name',
-  api_key: process.env.CLOUDINARY_API_KEY || 'your-api-key',
-  api_secret: process.env.CLOUDINARY_API_SECRET || 'your-api-secret'
-});
+// ✅ Import Cloudinary config
+const { configureUpload } = require('../config/cloudinaryConfig');
 
-// ✅ Configure Multer with Cloudinary
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'appointment_payments',
-    allowed_formats: ['jpg', 'png', 'jpeg', 'pdf'],
-    transformation: [{ width: 1000, height: 1000, crop: 'limit' }]
-  }
-});
-
-const upload = multer({
-  storage: storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
-  fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf') {
-      cb(null, true);
-    } else {
-      cb(new Error('Only images and PDFs are allowed'), false);
-    }
-  }
+// ✅ Configure multer upload
+const upload = configureUpload({
+  folder: 'appointment_payments',
+  fileSize: 5 * 1024 * 1024, // 5MB
+  allowed_formats: ['jpg', 'jpeg', 'png', 'pdf']
 });
 
 // ====================
@@ -53,7 +31,7 @@ const upload = multer({
 // 📌 Book appointment with payment screenshot
 router.post(
   '/book',
-  upload.single('payment_screenshot'),
+  upload.single('payment_screenshot'), // ✅ Field name must match frontend
   bookAppointment
 );
 
@@ -69,6 +47,7 @@ router.get('/available-doctors', async (req, res) => {
       data: doctors
     });
   } catch (error) {
+    console.error('❌ Error fetching doctors:', error);
     res.status(500).json({
       success: false,
       error: error.message
@@ -143,5 +122,24 @@ router.get(
   authenticateToken,
   getAppointmentStats
 );
+
+// ✅ Error handling middleware for multer
+router.use((err, req, res, next) => {
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      success: false,
+      error: 'File too large. Maximum size is 5MB.'
+    });
+  }
+  
+  if (err.message && err.message.includes('Invalid file type')) {
+    return res.status(400).json({
+      success: false,
+      error: err.message
+    });
+  }
+  
+  next(err);
+});
 
 module.exports = router;

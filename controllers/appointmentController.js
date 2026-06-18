@@ -9,6 +9,18 @@ const bookAppointment = async (req, res) => {
   console.log('🚀 BOOK APPOINTMENT - START');
   console.log('📦 Request body:', req.body);
   console.log('📁 File received:', req.file ? 'Yes' : 'No');
+  
+  // ✅ Log file details if present
+  if (req.file) {
+    console.log('📁 File details:', {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path,
+      filename: req.file.filename
+    });
+  }
 
   try {
     const {
@@ -50,7 +62,7 @@ const bookAppointment = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        error: 'Payment screenshot is required'
+        error: 'Payment screenshot is required. Please upload a file.'
       });
     }
 
@@ -58,7 +70,9 @@ const bookAppointment = async (req, res) => {
     const screenshotUrl = req.file.path;
     const screenshotPublicId = req.file.filename;
 
-    console.log('✅ Screenshot uploaded:', screenshotUrl);
+    console.log('✅ Screenshot uploaded successfully:');
+    console.log('   URL:', screenshotUrl);
+    console.log('   Public ID:', screenshotPublicId);
 
     // ✅ Check if patient exists and get their ID
     const patient = await Auth.findOne({ email: patient_email });
@@ -68,6 +82,8 @@ const bookAppointment = async (req, res) => {
         error: 'Patient not found. Please register first.'
       });
     }
+
+    console.log('✅ Patient found:', patient._id);
 
     // ✅ Check if doctor exists and is active
     const doctor = await Doctor.findOne({ 
@@ -82,7 +98,9 @@ const bookAppointment = async (req, res) => {
       });
     }
 
-    // ✅ Check for duplicate appointment (same doctor, same date/time)
+    console.log('✅ Doctor found:', doctor._id);
+
+    // ✅ Check for duplicate appointment
     const existingAppointment = await Appointment.findOne({
       doctor_email,
       appointment_date: new Date(appointment_date),
@@ -99,7 +117,7 @@ const bookAppointment = async (req, res) => {
 
     // ✅ Create appointment with patientId
     const appointmentData = {
-      patientId: patient._id,  // ✅ Add patientId from Auth model
+      patientId: patient._id,
       patient_email,
       patient_name,
       patient_phone,
@@ -121,7 +139,6 @@ const bookAppointment = async (req, res) => {
     await appointment.save();
 
     console.log('✅ Appointment created:', appointment._id);
-    console.log('✅ Patient ID:', patient._id);
 
     res.status(201).json({
       success: true,
@@ -140,12 +157,559 @@ const bookAppointment = async (req, res) => {
 
   } catch (error) {
     console.error('❌ Error booking appointment:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // ✅ Check for Cloudinary specific errors
+    if (error.message && error.message.includes('Cloudinary')) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to upload screenshot to Cloudinary. Please check your Cloudinary configuration.',
+        details: error.message
+      });
+    }
+    
     res.status(500).json({
       success: false,
-      error: 'Failed to book appointment: ' + error.message
+      error: 'Failed to book appointment: ' + error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 };
+
+// ... rest of your controller functions remain the same// controllers/appointmentController.js
+const Appointment = require('../models/appointmentModel');
+const Auth = require('../models/authModel');
+const Doctor = require('../models/doctorModel');
+const mongoose = require('mongoose');
+
+// 📌 BOOK APPOINTMENT (Patient)
+const bookAppointment = async (req, res) => {
+  console.log('🚀 BOOK APPOINTMENT - START');
+  console.log('📦 Request body:', req.body);
+  console.log('📁 File received:', req.file ? 'Yes' : 'No');
+  
+  // ✅ Log file details if present
+  if (req.file) {
+    console.log('📁 File details:', {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path,
+      filename: req.file.filename
+    });
+  }
+
+  try {
+    const {
+      patient_email,
+      patient_name,
+      patient_phone,
+      doctor_email,
+      doctor_name,
+      doctor_specialization,
+      appointment_date,
+      appointment_time,
+      symptoms,
+      notes,
+      amount
+    } = req.body;
+
+    // ✅ VALIDATION
+    if (!patient_email || !patient_name || !patient_phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Patient information is required'
+      });
+    }
+
+    if (!doctor_email || !doctor_name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Doctor information is required'
+      });
+    }
+
+    if (!appointment_date || !appointment_time) {
+      return res.status(400).json({
+        success: false,
+        error: 'Appointment date and time are required'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'Payment screenshot is required. Please upload a file.'
+      });
+    }
+
+    // ✅ Get Cloudinary URL from multer
+    const screenshotUrl = req.file.path;
+    const screenshotPublicId = req.file.filename;
+
+    console.log('✅ Screenshot uploaded successfully:');
+    console.log('   URL:', screenshotUrl);
+    console.log('   Public ID:', screenshotPublicId);
+
+    // ✅ Check if patient exists and get their ID
+    const patient = await Auth.findOne({ email: patient_email });
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        error: 'Patient not found. Please register first.'
+      });
+    }
+
+    console.log('✅ Patient found:', patient._id);
+
+    // ✅ Check if doctor exists and is active
+    const doctor = await Doctor.findOne({ 
+      email: doctor_email,
+      status: 'active'
+    });
+
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Doctor not found or not active'
+      });
+    }
+
+    console.log('✅ Doctor found:', doctor._id);
+
+    // ✅ Check for duplicate appointment
+    const existingAppointment = await Appointment.findOne({
+      doctor_email,
+      appointment_date: new Date(appointment_date),
+      appointment_time,
+      appointment_status: { $in: ['pending', 'approved'] }
+    });
+
+    if (existingAppointment) {
+      return res.status(409).json({
+        success: false,
+        error: 'This time slot is already booked. Please choose another time.'
+      });
+    }
+
+    // ✅ Create appointment with patientId
+    const appointmentData = {
+      patientId: patient._id,
+      patient_email,
+      patient_name,
+      patient_phone,
+      doctor_email,
+      doctor_name,
+      doctor_specialization,
+      appointment_date: new Date(appointment_date),
+      appointment_time,
+      symptoms: symptoms || '',
+      notes: notes || '',
+      amount: amount || doctor.consultationFee || 500,
+      screenshot_url: screenshotUrl,
+      screenshot_public_id: screenshotPublicId,
+      payment_status: 'pending',
+      appointment_status: 'pending'
+    };
+
+    const appointment = new Appointment(appointmentData);
+    await appointment.save();
+
+    console.log('✅ Appointment created:', appointment._id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Appointment booked successfully! Waiting for doctor approval.',
+      data: {
+        appointment_id: appointment._id,
+        patientId: appointment.patientId,
+        patient_name: appointment.patient_name,
+        doctor_name: appointment.doctor_name,
+        appointment_date: appointment.appointment_date,
+        appointment_time: appointment.appointment_time,
+        status: appointment.appointment_status,
+        screenshot_url: appointment.screenshot_url
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error booking appointment:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // ✅ Check for Cloudinary specific errors
+    if (error.message && error.message.includes('Cloudinary')) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to upload screenshot to Cloudinary. Please check your Cloudinary configuration.',
+        details: error.message
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to book appointment: ' + error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
+// ... rest of your controller functions remain the same// controllers/appointmentController.js
+const Appointment = require('../models/appointmentModel');
+const Auth = require('../models/authModel');
+const Doctor = require('../models/doctorModel');
+const mongoose = require('mongoose');
+
+// 📌 BOOK APPOINTMENT (Patient)
+const bookAppointment = async (req, res) => {
+  console.log('🚀 BOOK APPOINTMENT - START');
+  console.log('📦 Request body:', req.body);
+  console.log('📁 File received:', req.file ? 'Yes' : 'No');
+  
+  // ✅ Log file details if present
+  if (req.file) {
+    console.log('📁 File details:', {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path,
+      filename: req.file.filename
+    });
+  }
+
+  try {
+    const {
+      patient_email,
+      patient_name,
+      patient_phone,
+      doctor_email,
+      doctor_name,
+      doctor_specialization,
+      appointment_date,
+      appointment_time,
+      symptoms,
+      notes,
+      amount
+    } = req.body;
+
+    // ✅ VALIDATION
+    if (!patient_email || !patient_name || !patient_phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Patient information is required'
+      });
+    }
+
+    if (!doctor_email || !doctor_name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Doctor information is required'
+      });
+    }
+
+    if (!appointment_date || !appointment_time) {
+      return res.status(400).json({
+        success: false,
+        error: 'Appointment date and time are required'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'Payment screenshot is required. Please upload a file.'
+      });
+    }
+
+    // ✅ Get Cloudinary URL from multer
+    const screenshotUrl = req.file.path;
+    const screenshotPublicId = req.file.filename;
+
+    console.log('✅ Screenshot uploaded successfully:');
+    console.log('   URL:', screenshotUrl);
+    console.log('   Public ID:', screenshotPublicId);
+
+    // ✅ Check if patient exists and get their ID
+    const patient = await Auth.findOne({ email: patient_email });
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        error: 'Patient not found. Please register first.'
+      });
+    }
+
+    console.log('✅ Patient found:', patient._id);
+
+    // ✅ Check if doctor exists and is active
+    const doctor = await Doctor.findOne({ 
+      email: doctor_email,
+      status: 'active'
+    });
+
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Doctor not found or not active'
+      });
+    }
+
+    console.log('✅ Doctor found:', doctor._id);
+
+    // ✅ Check for duplicate appointment
+    const existingAppointment = await Appointment.findOne({
+      doctor_email,
+      appointment_date: new Date(appointment_date),
+      appointment_time,
+      appointment_status: { $in: ['pending', 'approved'] }
+    });
+
+    if (existingAppointment) {
+      return res.status(409).json({
+        success: false,
+        error: 'This time slot is already booked. Please choose another time.'
+      });
+    }
+
+    // ✅ Create appointment with patientId
+    const appointmentData = {
+      patientId: patient._id,
+      patient_email,
+      patient_name,
+      patient_phone,
+      doctor_email,
+      doctor_name,
+      doctor_specialization,
+      appointment_date: new Date(appointment_date),
+      appointment_time,
+      symptoms: symptoms || '',
+      notes: notes || '',
+      amount: amount || doctor.consultationFee || 500,
+      screenshot_url: screenshotUrl,
+      screenshot_public_id: screenshotPublicId,
+      payment_status: 'pending',
+      appointment_status: 'pending'
+    };
+
+    const appointment = new Appointment(appointmentData);
+    await appointment.save();
+
+    console.log('✅ Appointment created:', appointment._id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Appointment booked successfully! Waiting for doctor approval.',
+      data: {
+        appointment_id: appointment._id,
+        patientId: appointment.patientId,
+        patient_name: appointment.patient_name,
+        doctor_name: appointment.doctor_name,
+        appointment_date: appointment.appointment_date,
+        appointment_time: appointment.appointment_time,
+        status: appointment.appointment_status,
+        screenshot_url: appointment.screenshot_url
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error booking appointment:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // ✅ Check for Cloudinary specific errors
+    if (error.message && error.message.includes('Cloudinary')) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to upload screenshot to Cloudinary. Please check your Cloudinary configuration.',
+        details: error.message
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to book appointment: ' + error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
+// ... rest of your controller functions remain the same// controllers/appointmentController.js
+const Appointment = require('../models/appointmentModel');
+const Auth = require('../models/authModel');
+const Doctor = require('../models/doctorModel');
+const mongoose = require('mongoose');
+
+// 📌 BOOK APPOINTMENT (Patient)
+const bookAppointment = async (req, res) => {
+  console.log('🚀 BOOK APPOINTMENT - START');
+  console.log('📦 Request body:', req.body);
+  console.log('📁 File received:', req.file ? 'Yes' : 'No');
+  
+  // ✅ Log file details if present
+  if (req.file) {
+    console.log('📁 File details:', {
+      fieldname: req.file.fieldname,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size,
+      path: req.file.path,
+      filename: req.file.filename
+    });
+  }
+
+  try {
+    const {
+      patient_email,
+      patient_name,
+      patient_phone,
+      doctor_email,
+      doctor_name,
+      doctor_specialization,
+      appointment_date,
+      appointment_time,
+      symptoms,
+      notes,
+      amount
+    } = req.body;
+
+    // ✅ VALIDATION
+    if (!patient_email || !patient_name || !patient_phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Patient information is required'
+      });
+    }
+
+    if (!doctor_email || !doctor_name) {
+      return res.status(400).json({
+        success: false,
+        error: 'Doctor information is required'
+      });
+    }
+
+    if (!appointment_date || !appointment_time) {
+      return res.status(400).json({
+        success: false,
+        error: 'Appointment date and time are required'
+      });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'Payment screenshot is required. Please upload a file.'
+      });
+    }
+
+    // ✅ Get Cloudinary URL from multer
+    const screenshotUrl = req.file.path;
+    const screenshotPublicId = req.file.filename;
+
+    console.log('✅ Screenshot uploaded successfully:');
+    console.log('   URL:', screenshotUrl);
+    console.log('   Public ID:', screenshotPublicId);
+
+    // ✅ Check if patient exists and get their ID
+    const patient = await Auth.findOne({ email: patient_email });
+    if (!patient) {
+      return res.status(404).json({
+        success: false,
+        error: 'Patient not found. Please register first.'
+      });
+    }
+
+    console.log('✅ Patient found:', patient._id);
+
+    // ✅ Check if doctor exists and is active
+    const doctor = await Doctor.findOne({ 
+      email: doctor_email,
+      status: 'active'
+    });
+
+    if (!doctor) {
+      return res.status(404).json({
+        success: false,
+        error: 'Doctor not found or not active'
+      });
+    }
+
+    console.log('✅ Doctor found:', doctor._id);
+
+    // ✅ Check for duplicate appointment
+    const existingAppointment = await Appointment.findOne({
+      doctor_email,
+      appointment_date: new Date(appointment_date),
+      appointment_time,
+      appointment_status: { $in: ['pending', 'approved'] }
+    });
+
+    if (existingAppointment) {
+      return res.status(409).json({
+        success: false,
+        error: 'This time slot is already booked. Please choose another time.'
+      });
+    }
+
+    // ✅ Create appointment with patientId
+    const appointmentData = {
+      patientId: patient._id,
+      patient_email,
+      patient_name,
+      patient_phone,
+      doctor_email,
+      doctor_name,
+      doctor_specialization,
+      appointment_date: new Date(appointment_date),
+      appointment_time,
+      symptoms: symptoms || '',
+      notes: notes || '',
+      amount: amount || doctor.consultationFee || 500,
+      screenshot_url: screenshotUrl,
+      screenshot_public_id: screenshotPublicId,
+      payment_status: 'pending',
+      appointment_status: 'pending'
+    };
+
+    const appointment = new Appointment(appointmentData);
+    await appointment.save();
+
+    console.log('✅ Appointment created:', appointment._id);
+
+    res.status(201).json({
+      success: true,
+      message: 'Appointment booked successfully! Waiting for doctor approval.',
+      data: {
+        appointment_id: appointment._id,
+        patientId: appointment.patientId,
+        patient_name: appointment.patient_name,
+        doctor_name: appointment.doctor_name,
+        appointment_date: appointment.appointment_date,
+        appointment_time: appointment.appointment_time,
+        status: appointment.appointment_status,
+        screenshot_url: appointment.screenshot_url
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error booking appointment:', error);
+    console.error('❌ Error stack:', error.stack);
+    
+    // ✅ Check for Cloudinary specific errors
+    if (error.message && error.message.includes('Cloudinary')) {
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to upload screenshot to Cloudinary. Please check your Cloudinary configuration.',
+        details: error.message
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      error: 'Failed to book appointment: ' + error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+};
+
 
 // 📌 GET PATIENT APPOINTMENTS (Updated to use patientId)
 const getPatientAppointments = async (req, res) => {

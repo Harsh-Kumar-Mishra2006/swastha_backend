@@ -15,6 +15,8 @@ const app = express();
 connectDB();
 const path = require('path');
 
+require('./config/cloudinaryConfig');
+
 // Define allowed origins
 const allowedOrigins = [
   'http://localhost:5173',
