@@ -11,7 +11,7 @@ const {
   dispensePrescription,
   cancelPrescription,
   getPrescriptionStats
-} = require('../controllers/prescriptionController');
+} = require('../controllers/PrescriptionController');
 
 // ============================================
 // ✅ PUBLIC / PATIENT ROUTES

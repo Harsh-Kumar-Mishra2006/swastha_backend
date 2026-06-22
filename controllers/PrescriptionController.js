@@ -1,5 +1,5 @@
 // controllers/prescriptionController.js
-const Prescription = require('../models/prescriptionModel');
+const Prescription = require('../models/PrescriptionModel');
 const Appointment = require('../models/appointmentModel');
 const Auth = require('../models/authModel');
 
