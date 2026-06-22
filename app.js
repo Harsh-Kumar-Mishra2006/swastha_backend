@@ -76,7 +76,7 @@ app.use('/api/public', doctorRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/public', publicRoutes);
-app.use('/api/reports', testReportRoutes);
+app.use('/api/test-reports', testReportRoutes);
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));

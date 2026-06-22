@@ -20,7 +20,6 @@ const createTestRequest = async (req, res) => {
       doctor_specialization,
       
       // MLT to assign
-      mltId,
       mlt_name,
       mlt_email,
       mlt_specialization,
