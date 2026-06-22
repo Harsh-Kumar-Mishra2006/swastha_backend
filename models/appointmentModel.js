@@ -9,6 +9,11 @@ const appointmentSchema = new mongoose.Schema({
     required: true,
     index: true
   },
+  prescriptionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Prescription',
+    default: null
+  },
   patient_email: {
     type: String,
     required: true,

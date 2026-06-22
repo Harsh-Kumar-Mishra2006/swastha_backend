@@ -62,6 +62,10 @@ const authSchema = new mongoose.Schema({
       type: String,
       default: ''
     },
+     prescriptionHistory: [{
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Prescription'
+    }],
     // Patient-specific fields
     diseases: [{
       name: { type: String },
