@@ -18,7 +18,7 @@ const {
 // ============================================
 
 // 📌 Get patient's prescriptions (Patient Portal)
-router.get(
+router.get(-
   '/patient/:patient_email',
   authenticateToken,
   getPatientPrescriptions
