@@ -45,8 +45,8 @@ router.get('/doctors/stats', adminAuth, getDoctorStats);
 
 // ==================== MLT ROUTES ====================
 router.post('/mlt', adminAuth, addMLT);
-router.get('/mlt', authenticateToken, getAllMLTs);
-router.get('/mlt/:mltId', authenticateToken, getMLTById);
+router.get('/mlt', authenticateToken, roleAuth(['admin', 'doctor']), getAllMLTs);
+router.get('/mlt/:mltId', authenticateToken, roleAuth(['admin', 'doctor']), getMLTById);
 router.put('/mlt/:mltId/status', adminAuth, updateMLTStatus);
 router.put('/mlt/:mltId', adminAuth, updateMLTProfile);
 router.delete('/mlt/:mltId', adminAuth, deleteMLT);
