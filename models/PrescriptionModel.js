@@ -6,6 +6,7 @@ const prescriptionSchema = new mongoose.Schema({
   appointmentId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Appointment',
+    sparse: true,
     required: true,
     index: true
   },
