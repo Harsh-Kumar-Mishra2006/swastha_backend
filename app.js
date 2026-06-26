@@ -10,7 +10,7 @@ const appointmentRoutes = require('./routes/appointmentRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const publicRoutes = require('./routes/publicRoutes');
 const testReportRoutes = require('./routes/testReportRoutes');
-const prescriptionRoutes= require('./routes/PrescriptionRoute')
+const prescriptionRoutes= require('./routes/prescriptionRoutes')
 const app = express();
 connectDB();
 const path = require('path');
