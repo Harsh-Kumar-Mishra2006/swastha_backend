@@ -1,12 +1,11 @@
-// models/appointmentModel.js
 const mongoose = require('mongoose');
 
 const appointmentSchema = new mongoose.Schema({
-  // ✅ Add appointmentId field
+  // ✅ Add appointmentId field with proper indexing
   appointmentId: {
     type: String,
     unique: true,
-    sparse: true, // ✅ This allows multiple null values
+    sparse: true, // Allows multiple null values
     default: null
   },
   
@@ -127,22 +126,30 @@ const appointmentSchema = new mongoose.Schema({
   }
 });
 
-// Pre-save middleware to generate appointmentId if not provided
+// ✅ FIXED: Pre-save middleware with next parameter
 appointmentSchema.pre('save', function(next) {
+  console.log('📝 Pre-save middleware triggered');
+  
+  // Generate appointmentId if not provided
   if (!this.appointmentId) {
-    // Generate a unique appointment ID
     const prefix = 'APP';
     const timestamp = Date.now().toString(36).toUpperCase();
     const random = Math.random().toString(36).substring(2, 8).toUpperCase();
     this.appointmentId = `${prefix}-${timestamp}-${random}`;
+    console.log('✅ Generated appointmentId:', this.appointmentId);
   }
+  
+  // Update timestamp
   this.updatedAt = new Date();
+  
+  // ✅ MUST call next() to continue
   next();
 });
 
-// Indexes
+// Indexes for faster queries
 appointmentSchema.index({ patientId: 1, appointment_status: 1 });
 appointmentSchema.index({ patient_email: 1, appointment_status: 1 });
 appointmentSchema.index({ doctor_email: 1, appointment_status: 1 });
+appointmentSchema.index({ appointmentId: 1 }); // Index for appointmentId
 
 module.exports = mongoose.model('Appointment', appointmentSchema);
