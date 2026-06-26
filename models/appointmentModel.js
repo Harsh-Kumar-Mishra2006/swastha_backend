@@ -118,11 +118,15 @@ const appointmentSchema = new mongoose.Schema({
   }
 });
 
-// ✅ Fixed pre-save middleware - ONLY updates timestamp
+// ✅ FIXED: Proper pre-save middleware
+// IMPORTANT: Use function() NOT arrow function
+// IMPORTANT: Must accept 'next' parameter
+// IMPORTANT: Must call next() at the end
 appointmentSchema.pre('save', function(next) {
-  // Update timestamp
+  // Update the updatedAt timestamp
   this.updatedAt = new Date();
-  // ✅ IMPORTANT: Call next() to continue
+  
+  // ✅ CRITICAL: Call next() to continue the save operation
   next();
 });
 
@@ -130,6 +134,6 @@ appointmentSchema.pre('save', function(next) {
 appointmentSchema.index({ patientId: 1, appointment_status: 1 });
 appointmentSchema.index({ patient_email: 1, appointment_status: 1 });
 appointmentSchema.index({ doctor_email: 1, appointment_status: 1 });
-appointmentSchema.index({ appointment_date: 1 }); // Add this for date queries
+appointmentSchema.index({ appointment_date: 1 });
 
 module.exports = mongoose.model('Appointment', appointmentSchema);
