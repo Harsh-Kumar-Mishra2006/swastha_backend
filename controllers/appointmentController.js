@@ -1,4 +1,3 @@
-// controllers/appointmentController.js
 const Appointment = require('../models/appointmentModel');
 const Auth = require('../models/authModel');
 const Doctor = require('../models/doctorModel');
@@ -10,7 +9,6 @@ const bookAppointment = async (req, res) => {
   console.log('📦 Request body:', req.body);
   console.log('📁 File received:', req.file ? 'Yes' : 'No');
   
-  // ✅ Log file details if present
   if (req.file) {
     console.log('📁 File details:', {
       fieldname: req.file.fieldname,
@@ -159,7 +157,15 @@ const bookAppointment = async (req, res) => {
     console.error('❌ Error booking appointment:', error);
     console.error('❌ Error stack:', error.stack);
     
-    // ✅ Check for Cloudinary specific errors
+    // ✅ Handle specific errors
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        error: 'Duplicate appointment detected. This slot might already be booked.',
+        details: error.message
+      });
+    }
+    
     if (error.message && error.message.includes('Cloudinary')) {
       return res.status(500).json({
         success: false,
@@ -176,8 +182,7 @@ const bookAppointment = async (req, res) => {
   }
 };
 
-
-// 📌 GET PATIENT APPOINTMENTS (Updated to use patientId)
+// 📌 GET PATIENT APPOINTMENTS
 const getPatientAppointments = async (req, res) => {
   try {
     const { patient_email } = req.params;
@@ -189,7 +194,6 @@ const getPatientAppointments = async (req, res) => {
       });
     }
 
-    // Get patient by email to get their ID
     const patient = await Auth.findOne({ email: patient_email });
     if (!patient) {
       return res.status(404).json({
@@ -201,7 +205,7 @@ const getPatientAppointments = async (req, res) => {
     const appointments = await Appointment.find({ 
       patientId: patient._id 
     })
-      .populate('patientId', 'name email phone profile') // Populate patient details
+      .populate('patientId', 'name email phone profile')
       .sort({ createdAt: -1 });
 
     res.json({
@@ -219,7 +223,7 @@ const getPatientAppointments = async (req, res) => {
   }
 };
 
-// 📌 GET DOCTOR APPOINTMENTS (Doctor's Portal)
+// 📌 GET DOCTOR APPOINTMENTS
 const getDoctorAppointments = async (req, res) => {
   try {
     const { doctor_email } = req.params;
@@ -231,7 +235,6 @@ const getDoctorAppointments = async (req, res) => {
       });
     }
 
-    // Optional: Filter by status
     const { status } = req.query;
     let query = { doctor_email };
 
@@ -240,10 +243,9 @@ const getDoctorAppointments = async (req, res) => {
     }
 
     const appointments = await Appointment.find(query)
-      .populate('patientId', 'name email phone profile') // ✅ Populate patient details
+      .populate('patientId', 'name email phone profile')
       .sort({ createdAt: -1 });
 
-    // Get statistics
     const stats = {
       total: appointments.length,
       pending: appointments.filter(a => a.appointment_status === 'pending').length,
@@ -267,13 +269,13 @@ const getDoctorAppointments = async (req, res) => {
   }
 };
 
-// 📌 GET APPOINTMENT DETAILS (Updated with populate)
+// 📌 GET APPOINTMENT DETAILS
 const getAppointmentDetails = async (req, res) => {
   try {
     const { appointmentId } = req.params;
 
     const appointment = await Appointment.findById(appointmentId)
-      .populate('patientId', 'name email phone profile'); // ✅ Populate patient details
+      .populate('patientId', 'name email phone profile');
 
     if (!appointment) {
       return res.status(404).json({
@@ -296,8 +298,7 @@ const getAppointmentDetails = async (req, res) => {
   }
 };
 
-
-// 📌 APPROVE APPOINTMENT (Doctor)
+// 📌 APPROVE APPOINTMENT
 const approveAppointment = async (req, res) => {
   try {
     const { appointmentId } = req.params;
@@ -312,7 +313,6 @@ const approveAppointment = async (req, res) => {
       });
     }
 
-    // Check if appointment is already processed
     if (appointment.appointment_status !== 'pending') {
       return res.status(400).json({
         success: false,
@@ -320,7 +320,6 @@ const approveAppointment = async (req, res) => {
       });
     }
 
-    // Update appointment
     appointment.appointment_status = 'approved';
     appointment.doctor_notes = doctor_notes || 'Approved';
     appointment.approval_date = new Date();
@@ -343,7 +342,7 @@ const approveAppointment = async (req, res) => {
   }
 };
 
-// 📌 REJECT APPOINTMENT (Doctor)
+// 📌 REJECT APPOINTMENT
 const rejectAppointment = async (req, res) => {
   try {
     const { appointmentId } = req.params;
@@ -365,7 +364,6 @@ const rejectAppointment = async (req, res) => {
       });
     }
 
-    // Check if appointment is already processed
     if (appointment.appointment_status !== 'pending') {
       return res.status(400).json({
         success: false,
@@ -373,7 +371,6 @@ const rejectAppointment = async (req, res) => {
       });
     }
 
-    // Update appointment
     appointment.appointment_status = 'rejected';
     appointment.rejection_reason = rejection_reason;
     appointment.doctor_notes = doctor_notes || 'Rejected';
@@ -396,8 +393,7 @@ const rejectAppointment = async (req, res) => {
   }
 };
 
-
-// 📌 CANCEL APPOINTMENT (Patient)
+// 📌 CANCEL APPOINTMENT
 const cancelAppointment = async (req, res) => {
   try {
     const { appointmentId } = req.params;
@@ -412,7 +408,6 @@ const cancelAppointment = async (req, res) => {
       });
     }
 
-    // Verify patient owns this appointment
     if (appointment.patient_email !== patient_email) {
       return res.status(403).json({
         success: false,
@@ -420,7 +415,6 @@ const cancelAppointment = async (req, res) => {
       });
     }
 
-    // Can only cancel pending or approved appointments
     if (!['pending', 'approved'].includes(appointment.appointment_status)) {
       return res.status(400).json({
         success: false,
@@ -447,7 +441,7 @@ const cancelAppointment = async (req, res) => {
   }
 };
 
-// 📌 VERIFY PAYMENT (Admin/Doctor)
+// 📌 VERIFY PAYMENT
 const verifyPayment = async (req, res) => {
   try {
     const { appointmentId } = req.params;
@@ -480,7 +474,7 @@ const verifyPayment = async (req, res) => {
   }
 };
 
-// 📌 GET APPOINTMENT STATISTICS (Admin Dashboard)
+// 📌 GET APPOINTMENT STATISTICS
 const getAppointmentStats = async (req, res) => {
   try {
     const total = await Appointment.countDocuments();
@@ -490,7 +484,6 @@ const getAppointmentStats = async (req, res) => {
     const completed = await Appointment.countDocuments({ appointment_status: 'completed' });
     const cancelled = await Appointment.countDocuments({ appointment_status: 'cancelled' });
 
-    // Appointments by doctor
     const byDoctor = await Appointment.aggregate([
       {
         $group: {
@@ -507,7 +500,6 @@ const getAppointmentStats = async (req, res) => {
       { $sort: { count: -1 } }
     ]);
 
-    // Appointments by date (last 7 days)
     const last7Days = await Appointment.aggregate([
       {
         $match: {
