@@ -7,6 +7,7 @@ const appointmentSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Auth',
     required: true,
+    sparse: true,
     index: true
   },
   prescriptionId: {
