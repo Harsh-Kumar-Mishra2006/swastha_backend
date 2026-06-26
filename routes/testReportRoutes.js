@@ -4,7 +4,7 @@ const router = express.Router();
 const multer = require('multer');
 const { CloudinaryStorage } = require('multer-storage-cloudinary');
 const cloudinary = require('cloudinary').v2;
-const {authenticateToken} = require('../middlewares/authMiddleware');
+const { authenticateToken } = require('../middlewares/authMiddleware');
 const { requireRole } = require('../middlewares/authMiddleware');
 const {
   createTestRequest,
@@ -16,7 +16,10 @@ const {
   rejectAssignment,
   getTestRequestDetails,
   getTestStatistics,
-  getPatientsForDoctor
+  getPatientsForDoctor,
+  getAllTestReports,        // ✅ Import new functions
+  getPublicTestReport,
+  getPublicTestStatistics
 } = require('../controllers/testReportController');
 
 // ✅ Configure Cloudinary for test reports
@@ -48,6 +51,19 @@ const upload = multer({
     }
   }
 });
+
+// ====================
+// PUBLIC ROUTES (No authentication required)
+// ====================
+
+// 📌 Get all test reports (Public)
+router.get('/public/all', getAllTestReports);
+
+// 📌 Get single test report by ID (Public)
+router.get('/public/:testId', getPublicTestReport);
+
+// 📌 Get test statistics (Public)
+router.get('/public/stats/overview', getPublicTestStatistics);
 
 // ====================
 // DOCTOR ROUTES
@@ -131,10 +147,10 @@ router.put(
 );
 
 // ====================
-// SHARED ROUTES
+// SHARED ROUTES (Authenticated)
 // ====================
 
-// 📌 Get test request details
+// 📌 Get test request details (Authenticated)
 router.get(
   '/:testId',
   authenticateToken,

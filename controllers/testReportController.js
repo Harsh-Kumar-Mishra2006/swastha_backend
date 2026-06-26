@@ -657,6 +657,157 @@ const getPatientsForDoctor = async (req, res) => {
   }
 };
 
+// controllers/testReportController.js - Add this new function at the end
+
+// 📌 PUBLIC: Get All Test Reports (No authentication required)
+const getAllTestReports = async (req, res) => {
+  try {
+    const { status, category, search } = req.query;
+    
+    let query = {};
+    
+    if (status) {
+      query.status = status;
+    }
+    
+    if (category) {
+      query.test_category = category;
+    }
+    
+    // Search by patient name, doctor name, or test name
+    if (search) {
+      query.$or = [
+        { patient_name: { $regex: search, $options: 'i' } },
+        { doctor_name: { $regex: search, $options: 'i' } },
+        { test_name: { $regex: search, $options: 'i' } },
+        { mlt_name: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const testReports = await TestReport.find(query)
+      .populate('patientId', 'name email phone profile')
+      .populate('doctorId', 'name email specialization')
+      .populate('mltId', 'name email specialization department')
+      .populate('appointmentId', 'appointment_date appointment_time')
+      .sort({ createdAt: -1 });
+
+    // Get statistics
+    const stats = {
+      total: testReports.length,
+      pending: testReports.filter(t => t.status === 'pending').length,
+      assigned: testReports.filter(t => t.status === 'assigned').length,
+      'in-progress': testReports.filter(t => t.status === 'in-progress').length,
+      completed: testReports.filter(t => t.status === 'completed').length,
+      cancelled: testReports.filter(t => t.status === 'cancelled').length
+    };
+
+    res.json({
+      success: true,
+      statistics: stats,
+      data: testReports
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching test reports:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch test reports'
+    });
+  }
+};
+
+// 📌 PUBLIC: Get Single Test Report by ID (No authentication required)
+const getPublicTestReport = async (req, res) => {
+  try {
+    const { testId } = req.params;
+
+    const testReport = await TestReport.findById(testId)
+      .populate('patientId', 'name email phone profile')
+      .populate('doctorId', 'name email specialization')
+      .populate('mltId', 'name email specialization department')
+      .populate('appointmentId', 'appointment_date appointment_time symptoms');
+
+    if (!testReport) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test report not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: testReport
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching test report:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch test report'
+    });
+  }
+};
+
+// 📌 PUBLIC: Get Test Report Statistics (No authentication required)
+const getPublicTestStatistics = async (req, res) => {
+  try {
+    const total = await TestReport.countDocuments();
+    const pending = await TestReport.countDocuments({ status: 'pending' });
+    const assigned = await TestReport.countDocuments({ status: 'assigned' });
+    const inProgress = await TestReport.countDocuments({ status: 'in-progress' });
+    const completed = await TestReport.countDocuments({ status: 'completed' });
+    const cancelled = await TestReport.countDocuments({ status: 'cancelled' });
+
+    // Reports by category
+    const byCategory = await TestReport.aggregate([
+      {
+        $group: {
+          _id: '$test_category',
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+
+    // Reports by doctor
+    const byDoctor = await TestReport.aggregate([
+      {
+        $group: {
+          _id: '$doctor_name',
+          count: { $sum: 1 },
+          completed: {
+            $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] }
+          }
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        total,
+        pending,
+        assigned,
+        inProgress,
+        completed,
+        cancelled,
+        byCategory,
+        byDoctor
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching test statistics:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch statistics'
+    });
+  }
+};
+
+
+
 module.exports = {
   createTestRequest,
   getDoctorTestRequests,
@@ -667,5 +818,8 @@ module.exports = {
   rejectAssignment,
   getTestRequestDetails,
   getTestStatistics,
-  getPatientsForDoctor
+  getPatientsForDoctor,
+  getAllTestReports,        // ✅ New public function
+  getPublicTestReport,      // ✅ New public function
+  getPublicTestStatistics 
 };
