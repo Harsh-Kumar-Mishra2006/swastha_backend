@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "cleanup:appointments": "node scripts/cleanup-appointments.js"
+    "cleanup:appointments": "node scripts/cleanup-appointments.js",
+    "cleanup:database": "node scripts/cleanup-database.js"
   },
   "keywords": [],
   "author": "",

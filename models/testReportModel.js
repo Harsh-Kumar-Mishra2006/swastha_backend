@@ -1,4 +1,3 @@
-// models/testReportModel.js
 const mongoose = require('mongoose');
 
 const testReportSchema = new mongoose.Schema({
@@ -22,11 +21,11 @@ const testReportSchema = new mongoose.Schema({
     required: true
   },
 
-  // MLT assigned to conduct the test - ID is now optional
+  // MLT assigned to conduct the test
   mltId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'MLT',
-    required: false, // Changed to false
+    required: false,
     index: true
   },
   mlt_name: {
@@ -42,11 +41,11 @@ const testReportSchema = new mongoose.Schema({
     required: true
   },
 
-  // Patient details - ID is now optional
+  // Patient details
   patientId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Auth',
-    required: false, // Changed to false
+    required: false,
     index: true
   },
   patient_name: {
@@ -186,6 +185,8 @@ const testReportSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// ✅ NO pre-save middleware - to avoid errors
 
 // Indexes for faster queries
 testReportSchema.index({ doctorId: 1, status: 1 });
