@@ -118,17 +118,8 @@ const appointmentSchema = new mongoose.Schema({
   }
 });
 
-// ✅ FIXED: Proper pre-save middleware
-// IMPORTANT: Use function() NOT arrow function
-// IMPORTANT: Must accept 'next' parameter
-// IMPORTANT: Must call next() at the end
-appointmentSchema.pre('save', function(next) {
-  // Update the updatedAt timestamp
-  this.updatedAt = new Date();
-  
-  // ✅ CRITICAL: Call next() to continue the save operation
-  next();
-});
+// ✅ NO pre-save middleware - we'll handle updates in the controller
+// This avoids the "next is not a function" error completely
 
 // Indexes for faster queries
 appointmentSchema.index({ patientId: 1, appointment_status: 1 });

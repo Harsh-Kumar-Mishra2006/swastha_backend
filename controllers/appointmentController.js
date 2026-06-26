@@ -113,7 +113,7 @@ const bookAppointment = async (req, res) => {
       });
     }
 
-    // ✅ Create appointment with patientId
+    // ✅ Create appointment with patientId - NO middleware needed
     const appointmentData = {
       patientId: patient._id,
       patient_email,
@@ -130,7 +130,8 @@ const bookAppointment = async (req, res) => {
       screenshot_url: screenshotUrl,
       screenshot_public_id: screenshotPublicId,
       payment_status: 'pending',
-      appointment_status: 'pending'
+      appointment_status: 'pending',
+      updatedAt: new Date() // ✅ Explicitly set updatedAt
     };
 
     const appointment = new Appointment(appointmentData);
@@ -157,7 +158,6 @@ const bookAppointment = async (req, res) => {
     console.error('❌ Error booking appointment:', error);
     console.error('❌ Error stack:', error.stack);
     
-    // ✅ Handle specific errors
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -181,6 +181,7 @@ const bookAppointment = async (req, res) => {
     });
   }
 };
+
 
 // 📌 GET PATIENT APPOINTMENTS
 const getPatientAppointments = async (req, res) => {
