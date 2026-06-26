@@ -5,8 +5,7 @@ const Doctor = require('../models/doctorModel');
 const MLT = require('../models/mltModel');
 const Appointment = require('../models/appointmentModel');
 const mongoose = require('mongoose');
-
-// 📌 DOCTOR: Create Test Request
+// controllers/testReportController.js - Updated createTestRequest
 const createTestRequest = async (req, res) => {
   console.log('🚀 CREATE TEST REQUEST - START');
   console.log('📦 Request body:', req.body);
@@ -20,12 +19,13 @@ const createTestRequest = async (req, res) => {
       doctor_specialization,
       
       // MLT to assign
+      mltId, // Now optional
       mlt_name,
       mlt_email,
       mlt_specialization,
       
       // Patient info
-      patientId,
+      patientId, // Now optional
       patient_name,
       patient_email,
       patient_phone,
@@ -53,7 +53,7 @@ const createTestRequest = async (req, res) => {
       medications
     } = req.body;
 
-    // ✅ VALIDATION
+    // ✅ VALIDATION - Only require email for patient and MLT
     if (!doctorId || !doctor_email) {
       return res.status(400).json({
         success: false,
@@ -61,17 +61,19 @@ const createTestRequest = async (req, res) => {
       });
     }
 
-    if (!mltId || !mlt_email) {
+    // MLT validation - require email but ID is optional
+    if (!mlt_email || !mlt_name) {
       return res.status(400).json({
         success: false,
-        error: 'MLT information is required'
+        error: 'MLT email and name are required'
       });
     }
 
-    if (!patientId || !patient_email || !patient_name) {
+    // Patient validation - require email but ID is optional
+    if (!patient_email || !patient_name) {
       return res.status(400).json({
         success: false,
-        error: 'Patient information is required'
+        error: 'Patient email and name are required'
       });
     }
 
@@ -94,26 +96,32 @@ const createTestRequest = async (req, res) => {
       });
     }
 
-    // ✅ Check if MLT exists and is active
-    const mlt = await MLT.findOne({ 
-      email: mlt_email,
-      status: 'active'
-    });
-    if (!mlt) {
-      return res.status(404).json({
-        success: false,
-        error: 'MLT not found or not active'
+    // ✅ Check if MLT exists (if ID is provided, verify it; otherwise verify by email)
+    let mlt = null;
+    if (mltId) {
+      mlt = await MLT.findById(mltId);
+    }
+    if (!mlt && mlt_email) {
+      mlt = await MLT.findOne({ 
+        email: mlt_email,
+        status: 'active'
       });
     }
+    
+    // If MLT not found, we'll still create the request but without ID
+    // This allows manual entry of MLT details
 
-    // ✅ Check if patient exists
-    const patient = await Auth.findOne({ email: patient_email });
-    if (!patient) {
-      return res.status(404).json({
-        success: false,
-        error: 'Patient not found'
-      });
+    // ✅ Check if patient exists (if ID is provided, verify it; otherwise verify by email)
+    let patient = null;
+    if (patientId) {
+      patient = await Auth.findById(patientId);
     }
+    if (!patient && patient_email) {
+      patient = await Auth.findOne({ email: patient_email });
+    }
+    
+    // If patient not found, we'll still create the request but without ID
+    // This allows manual entry of patient details
 
     // ✅ Check if appointment exists (if provided)
     if (appointmentId) {
@@ -132,14 +140,14 @@ const createTestRequest = async (req, res) => {
       doctor_name,
       doctor_email,
       doctor_specialization,
-      mltId,
+      mltId: mlt?._id || null, // Use found MLT ID or null
       mlt_name,
       mlt_email,
       mlt_specialization,
-      patientId,
+      patientId: patient?._id || null, // Use found patient ID or null
       patient_name,
       patient_email,
-      patient_phone,
+      patient_phone: patient_phone || '',
       patient_age: patient_age || '',
       patient_gender: patient_gender || '',
       patient_bloodGroup: patient_bloodGroup || '',

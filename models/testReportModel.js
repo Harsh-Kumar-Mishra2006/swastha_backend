@@ -22,11 +22,11 @@ const testReportSchema = new mongoose.Schema({
     required: true
   },
 
-  // MLT assigned to conduct the test
+  // MLT assigned to conduct the test - ID is now optional
   mltId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'MLT',
-    required: true,
+    required: false, // Changed to false
     index: true
   },
   mlt_name: {
@@ -42,11 +42,11 @@ const testReportSchema = new mongoose.Schema({
     required: true
   },
 
-  // Patient details
+  // Patient details - ID is now optional
   patientId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Auth',
-    required: true,
+    required: false, // Changed to false
     index: true
   },
   patient_name: {
