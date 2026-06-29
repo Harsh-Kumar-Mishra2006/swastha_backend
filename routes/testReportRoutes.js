@@ -17,9 +17,15 @@ const {
   getTestRequestDetails,
   getTestStatistics,
   getPatientsForDoctor,
-  getAllTestReports,        // ✅ Import new functions
+  getAllTestReports,       
   getPublicTestReport,
-  getPublicTestStatistics
+  getPublicTestStatistics,
+  createDetailedReport,
+  getMLTAssignedTests,
+  getDetailedTestReport,
+  getPatientReports,
+  getDoctorCompletedReports,
+  downloadReportPDF
 } = require('../controllers/testReportController');
 
 // ✅ Configure Cloudinary for test reports
