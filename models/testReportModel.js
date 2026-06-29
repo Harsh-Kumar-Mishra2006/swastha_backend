@@ -183,7 +183,55 @@ const testReportSchema = new mongoose.Schema({
   updatedAt: {
     type: Date,
     default: Date.now
-  }
+  },
+
+  test_parameters: [{
+    name: { type: String },
+    value: { type: String },
+    unit: { type: String },
+    normal_range: { type: String },
+    is_abnormal: { type: Boolean, default: false }
+  }],
+  normal_ranges: [{
+    parameter: { type: String },
+    range: { type: String },
+    description: { type: String }
+  }],
+  interpretation: {
+    type: String,
+    default: ''
+  },
+  clinical_impression: {
+    type: String,
+    default: ''
+  },
+  follow_up_instructions: {
+    type: String,
+    default: ''
+  },
+  report_visibility: {
+    type: String,
+    enum: ['doctor', 'patient', 'both'],
+    default: 'both'
+  },
+  report_version: {
+    type: Number,
+    default: 1
+  },
+  previous_versions: [{
+    test_results: String,
+    results_summary: String,
+    test_conclusion: String,
+    recommendations: String,
+    test_parameters: [{
+      name: String,
+      value: String,
+      unit: String,
+      normal_range: String
+    }],
+    updatedAt: Date,
+    updatedBy: String
+  }]
 });
 
 // ✅ NO pre-save middleware - to avoid errors
@@ -194,5 +242,9 @@ testReportSchema.index({ mltId: 1, status: 1 });
 testReportSchema.index({ patientId: 1, status: 1 });
 testReportSchema.index({ test_category: 1 });
 testReportSchema.index({ status: 1 });
+// Add indexes for new fields
+testReportSchema.index({ patientId: 1, status: 1, completed_date: -1 });
+testReportSchema.index({ doctorId: 1, status: 1, completed_date: -1 });
+testReportSchema.index({ mltId: 1, status: 1 });
 
 module.exports = mongoose.model('TestReport', testReportSchema);

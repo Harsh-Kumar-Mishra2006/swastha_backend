@@ -157,4 +157,71 @@ router.get(
   getTestRequestDetails
 );
 
+// routes/testReportRoutes.js - Add these new routes
+
+// ====================
+// MLT REPORT CREATION ROUTES
+// ====================
+
+// 📌 Get MLT's assigned tests (for report creation)
+router.get(
+  '/mlt/:mltId/assigned-tests',
+  authenticateToken,
+  requireRole(['MLT']),
+  getMLTAssignedTests
+);
+
+// 📌 Create detailed report (MLT)
+router.put(
+  '/:testId/detailed-report',
+  authenticateToken,
+  requireRole(['MLT']),
+  upload.single('test_report_file'),
+  createDetailedReport
+);
+
+// ====================
+// REPORT VIEWING ROUTES
+// ====================
+
+// 📌 Get detailed report (Authenticated - Doctor/Patient/MLT)
+router.get(
+  '/:testId/detailed',
+  authenticateToken,
+  getDetailedTestReport
+);
+
+// 📌 Get patient's reports (Patient)
+router.get(
+  '/patient/:patientId/reports',
+  authenticateToken,
+  requireRole(['patient']),
+  getPatientReports
+);
+
+// 📌 Get doctor's completed reports (Doctor)
+router.get(
+  '/doctor/:doctorId/completed-reports',
+  authenticateToken,
+  requireRole(['doctor']),
+  getDoctorCompletedReports
+);
+
+// 📌 Download report PDF
+router.get(
+  '/:testId/download',
+  authenticateToken,
+  downloadReportPDF
+);
+
+// ====================
+// PUBLIC REPORT VIEWING (Shareable link)
+// ====================
+
+// 📌 Get public report (No auth - for sharing)
+router.get(
+  '/public/share/:testId',
+  getPublicTestReport
+);
+
 module.exports = router;

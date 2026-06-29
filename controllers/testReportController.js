@@ -806,8 +806,327 @@ const getPublicTestStatistics = async (req, res) => {
   }
 };
 
+// controllers/testReportController.js - Add these new functions
 
+// 📌 MLT: Create/Update Detailed Test Report
+const createDetailedReport = async (req, res) => {
+  console.log('🚀 CREATE DETAILED REPORT - START');
+  console.log('📦 Request body:', req.body);
+  console.log('📁 File received:', req.file ? 'Yes' : 'No');
 
+  try {
+    const { testId } = req.params;
+    const {
+      test_results,
+      results_summary,
+      test_conclusion,
+      recommendations,
+      mlt_notes,
+      report_status,
+      // Additional detailed fields
+      test_parameters,
+      normal_ranges,
+      interpretation,
+      clinical_impression,
+      follow_up_instructions,
+      report_visibility
+    } = req.body;
+
+    // Find the test report
+    const testReport = await TestReport.findById(testId);
+    if (!testReport) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test request not found'
+      });
+    }
+
+    // Check if MLT is assigned to this test
+    if (testReport.mltId?.toString() !== req.user?.id && 
+        testReport.mlt_email !== req.user?.email) {
+      return res.status(403).json({
+        success: false,
+        error: 'You are not authorized to update this test report'
+      });
+    }
+
+    // Update report with detailed information
+    const updateData = {
+      status: report_status || 'completed',
+      test_results: test_results || '',
+      results_summary: results_summary || '',
+      test_conclusion: test_conclusion || '',
+      recommendations: recommendations || '',
+      mlt_notes: mlt_notes || '',
+      completed_date: new Date(),
+      updatedAt: new Date(),
+      // Additional detailed fields
+      test_parameters: test_parameters ? JSON.parse(test_parameters) : [],
+      normal_ranges: normal_ranges ? JSON.parse(normal_ranges) : [],
+      interpretation: interpretation || '',
+      clinical_impression: clinical_impression || '',
+      follow_up_instructions: follow_up_instructions || '',
+      report_visibility: report_visibility || 'both' // 'doctor', 'patient', 'both'
+    };
+
+    // If file uploaded (report PDF/Image)
+    if (req.file) {
+      updateData.test_report_url = req.file.path;
+      updateData.test_report_public_id = req.file.filename;
+    }
+
+    const updatedTest = await TestReport.findByIdAndUpdate(
+      testId,
+      updateData,
+      { new: true }
+    );
+
+    console.log('✅ Detailed report created:', updatedTest._id);
+
+    res.json({
+      success: true,
+      message: 'Detailed test report created successfully',
+      data: updatedTest
+    });
+
+  } catch (error) {
+    console.error('❌ Error creating detailed report:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to create detailed report: ' + error.message
+    });
+  }
+};
+
+// 📌 Get MLT's Assigned Tests (For Report Creation)
+const getMLTAssignedTests = async (req, res) => {
+  try {
+    const { mltId } = req.params;
+    const { status } = req.query;
+
+    if (!mltId) {
+      return res.status(400).json({
+        success: false,
+        error: 'MLT ID is required'
+      });
+    }
+
+    let query = { 
+      mltId: mltId,
+      status: { $in: ['assigned', 'in-progress', 'completed'] }
+    };
+
+    if (status) {
+      query.status = status;
+    }
+
+    const tests = await TestReport.find(query)
+      .populate('patientId', 'name email phone profile')
+      .populate('doctorId', 'name email specialization')
+      .populate('appointmentId', 'appointment_date appointment_time symptoms')
+      .sort({ updatedAt: -1 });
+
+    res.json({
+      success: true,
+      data: tests
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching MLT assigned tests:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch assigned tests'
+    });
+  }
+};
+
+// 📌 Get Test Report for Viewing (Doctor/Patient)
+const getDetailedTestReport = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    const user = req.user;
+
+    const testReport = await TestReport.findById(testId)
+      .populate('patientId', 'name email phone profile')
+      .populate('doctorId', 'name email specialization')
+      .populate('mltId', 'name email specialization department')
+      .populate('appointmentId', 'appointment_date appointment_time symptoms');
+
+    if (!testReport) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test report not found'
+      });
+    }
+
+    // Check visibility permissions
+    const isDoctor = testReport.doctorId?.toString() === user?.id || 
+                    testReport.doctor_email === user?.email;
+    const isPatient = testReport.patientId?.toString() === user?.id || 
+                     testReport.patient_email === user?.email;
+    const isMLT = testReport.mltId?.toString() === user?.id || 
+                  testReport.mlt_email === user?.email;
+
+    // Check if user has access based on report visibility
+    let hasAccess = false;
+    if (user?.role === 'admin') {
+      hasAccess = true;
+    } else if (isMLT || isDoctor) {
+      hasAccess = true;
+    } else if (isPatient) {
+      // Patient can only view if report_visibility is 'patient' or 'both'
+      hasAccess = testReport.report_visibility === 'patient' || 
+                  testReport.report_visibility === 'both';
+    }
+
+    if (!hasAccess) {
+      return res.status(403).json({
+        success: false,
+        error: 'You do not have permission to view this report'
+      });
+    }
+
+    // If report is not completed, only show limited info
+    if (testReport.status !== 'completed') {
+      return res.json({
+        success: true,
+        data: {
+          _id: testReport._id,
+          status: testReport.status,
+          patient_name: testReport.patient_name,
+          test_name: testReport.test_name,
+          test_category: testReport.test_category,
+          message: 'This test report is still in progress'
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      data: testReport
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching detailed report:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch detailed report'
+    });
+  }
+};
+
+// 📌 Get All Completed Reports for Patient
+const getPatientReports = async (req, res) => {
+  try {
+    const { patientId } = req.params;
+
+    if (!patientId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Patient ID is required'
+      });
+    }
+
+    const reports = await TestReport.find({
+      patientId: patientId,
+      status: 'completed'
+    })
+    .populate('doctorId', 'name email specialization')
+    .populate('mltId', 'name email specialization')
+    .sort({ completed_date: -1 });
+
+    res.json({
+      success: true,
+      data: reports
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching patient reports:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch patient reports'
+    });
+  }
+};
+
+// 📌 Get All Completed Reports for Doctor
+const getDoctorCompletedReports = async (req, res) => {
+  try {
+    const { doctorId } = req.params;
+
+    if (!doctorId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Doctor ID is required'
+      });
+    }
+
+    const reports = await TestReport.find({
+      doctorId: doctorId,
+      status: 'completed'
+    })
+    .populate('patientId', 'name email phone')
+    .populate('mltId', 'name email specialization')
+    .sort({ completed_date: -1 });
+
+    res.json({
+      success: true,
+      data: reports
+    });
+
+  } catch (error) {
+    console.error('❌ Error fetching doctor reports:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch doctor reports'
+    });
+  }
+};
+
+// 📌 Download Report PDF (Generate PDF)
+const downloadReportPDF = async (req, res) => {
+  try {
+    const { testId } = req.params;
+    
+    const testReport = await TestReport.findById(testId)
+      .populate('patientId', 'name email phone')
+      .populate('doctorId', 'name email specialization')
+      .populate('mltId', 'name email specialization');
+
+    if (!testReport) {
+      return res.status(404).json({
+        success: false,
+        error: 'Test report not found'
+      });
+    }
+
+    // If report has an uploaded file, redirect to it
+    if (testReport.test_report_url) {
+      return res.json({
+        success: true,
+        url: testReport.test_report_url
+      });
+    }
+
+    // Otherwise, generate PDF from data
+    // You can implement PDF generation here using libraries like pdfkit or puppeteer
+    
+    res.json({
+      success: true,
+      message: 'PDF generation not implemented yet',
+      data: testReport
+    });
+
+  } catch (error) {
+    console.error('❌ Error downloading report:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to download report'
+    });
+  }
+};
+
+// Export all functions
 module.exports = {
   createTestRequest,
   getDoctorTestRequests,
@@ -819,7 +1138,13 @@ module.exports = {
   getTestRequestDetails,
   getTestStatistics,
   getPatientsForDoctor,
-  getAllTestReports,        // ✅ New public function
-  getPublicTestReport,      // ✅ New public function
-  getPublicTestStatistics 
+  getAllTestReports,       
+  getPublicTestReport,      
+  getPublicTestStatistics,
+  createDetailedReport,
+  getMLTAssignedTests,
+  getDetailedTestReport,
+  getPatientReports,
+  getDoctorCompletedReports,
+  downloadReportPDF
 };
