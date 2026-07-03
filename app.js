@@ -11,6 +11,8 @@ const paymentRoutes = require('./routes/paymentRoutes');
 const publicRoutes = require('./routes/publicRoutes');
 const testReportRoutes = require('./routes/testReportRoutes');
 const prescriptionRoutes= require('./routes/prescriptionRoutes')
+const mltReportRoutes = require('./routes/MLTReportRoutes');
+
 const app = express();
 connectDB();
 const path = require('path');
@@ -78,6 +80,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/test-reports', testReportRoutes);
 app.use('/api/prescriptions',prescriptionRoutes);
+app.use('/api/mlt-reports', mltReportRoutes);
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
