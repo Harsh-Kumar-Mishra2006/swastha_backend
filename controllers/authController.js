@@ -160,6 +160,7 @@ const checkMLTAuthorization = async (req, res) => {
     });
   }
 };
+
 // Update signup controller to save profile data
 const signup = async (req, res) => {
   let { name, email, username, phone, password, role = 'patient', profile = {} } = req.body;
@@ -179,7 +180,7 @@ const signup = async (req, res) => {
   if (!validRoles.includes(role)) {
     return res.status(400).json({
       success: false,
-      error: 'Invalid role. Must be patient, doctor, or admin or MLT'
+      error: 'Invalid role. Must be patient, doctor, admin or MLT'
     });
   }
 
@@ -382,9 +383,6 @@ const login = async (req, res) => {
       }
     } 
     // In authController.js - login function
-// Add this after doctor handling and before else statement
-
-// For MLT: Verify password against MLT collection
 else if (user.role === 'MLT') {
   const mlt = await MLT.findOne({ email: user.email });
   
@@ -435,8 +433,6 @@ else if (user.role === 'MLT') {
         });
       }
     }
-
-
 
     // Generate token
     const token = jwt.sign(
