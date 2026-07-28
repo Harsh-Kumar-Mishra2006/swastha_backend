@@ -19,7 +19,7 @@ const path = require('path');
 
 require('./config/cloudinaryConfig');
 
-// Define allowed origins
+// Defining allowed origins
 const allowedOrigins = [
   'http://localhost:5173',
   'http://localhost:3000',
@@ -28,7 +28,7 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    // Allow requests with no origin (like mobile apps, curl, etc)
+    // Allowing requests with no origin (like mobile apps, curl, etc)
     if (!origin) return callback(null, true);
     
     if (allowedOrigins.indexOf(origin) !== -1) {
@@ -46,16 +46,13 @@ const corsOptions = {
   maxAge: 86400,
 };
 
-// Apply CORS middleware - this automatically handles OPTIONS requests
+// Appling CORS middleware - this automatically handles OPTIONS requests
 app.use(cors(corsOptions));
 
-// Remove this line - it's causing the error:
-// app.options('*', cors(corsOptions));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Add this after app.use(express.urlencoded...)
 app.get('/api/debug', (req, res) => {
   res.json({
     message: 'Backend is running!',
@@ -67,11 +64,10 @@ app.get('/api/debug', (req, res) => {
   });
 });
 
-// Also add a test endpoint for appointments
 app.get('/api/appointments/test', (req, res) => {
   res.json({ message: 'Appointments route is working!' });
 });
-// Your routes
+
 app.use('/api/auth', authRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/public', doctorRoutes);
@@ -82,7 +78,6 @@ app.use('/api/test-reports', testReportRoutes);
 app.use('/api/prescriptions',prescriptionRoutes);
 app.use('/api/mlt-reports', mltReportRoutes);
 
-// Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 const PORT = process.env.PORT || 3000;
