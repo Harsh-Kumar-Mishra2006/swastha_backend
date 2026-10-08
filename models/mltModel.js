@@ -35,7 +35,7 @@ const mltSchema = new mongoose.Schema({
   },
   licenseNumber: {
     type: String,
-    required: true,
+    required: false,
     unique: true
   },
   department: {
