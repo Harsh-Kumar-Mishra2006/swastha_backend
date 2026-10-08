@@ -385,19 +385,19 @@ const updateDoctorProfile = async (req, res) => {
   }
 };
 
-// Add MLT (Medical Laboratory Technician) - FIXED VERSION
+// Add MLT (Medical Laboratory Technician) - licenseNumber removed
 const addMLT = async (req, res) => {
   try {
     const { 
       name, email, phone, username, password,
       specialization, qualifications, experience,
-      licenseNumber, department, bio
+      department, bio
     } = req.body;
 
     // Validate required fields
     const requiredFields = ['name', 'email', 'phone', 'username', 'password', 
                            'specialization', 'qualifications', 'experience', 
-                           'licenseNumber', 'department'];
+                           'department'];
     
     for (const field of requiredFields) {
       if (!req.body[field]) {
@@ -420,39 +420,28 @@ const addMLT = async (req, res) => {
       });
     }
 
-    // Check if MLT already exists with same license number
-    const existingMLT = await MLT.findOne({ licenseNumber });
-    if (existingMLT) {
-      return res.status(400).json({
-        success: false,
-        error: 'License number already registered'
-      });
-    }
-
     // Create MLT profile FIRST (password will be hashed by pre-save hook)
     const mltProfile = await MLT.create({
       name,
       email,
       phone,
-      password, // Will be hashed by MLT model's pre-save hook
+      password,
       specialization,
       qualifications,
       experience,
-      licenseNumber,
       department,
       bio: bio || '',
       status: 'active',
       addedBy: req.user.userId
     });
 
-    // Create auth user for MLT using the SAME hashed password from MLT profile
-    // This ensures both have the same password hash
+    // Create auth user for MLT using the SAME hashed password
     const newMLTUser = await Auth.create({
       name,
       email,
       username,
       phone,
-      password: mltProfile.password, // Use the already hashed password from MLT profile
+      password: mltProfile.password,
       role: 'MLT',
       isVerified: true,
       isActive: true,
@@ -461,7 +450,6 @@ const addMLT = async (req, res) => {
         qualifications,
         experience,
         bio: bio || '',
-        licenseNumber,
         department
       }
     });
@@ -482,7 +470,6 @@ const addMLT = async (req, res) => {
           name: mltProfile.name,
           email: mltProfile.email,
           specialization: mltProfile.specialization,
-          licenseNumber: mltProfile.licenseNumber,
           department: mltProfile.department
         }
       }
@@ -620,7 +607,7 @@ const updateMLTProfile = async (req, res) => {
         'profile.qualifications': mlt.qualifications,
         'profile.experience': mlt.experience,
         'profile.bio': mlt.bio,
-        'profile.licenseNumber': mlt.licenseNumber,
+        // 'profile.licenseNumber': mlt.licenseNumber,
         'profile.department': mlt.department
       }
     );

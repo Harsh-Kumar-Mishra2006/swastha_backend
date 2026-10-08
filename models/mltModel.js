@@ -34,10 +34,11 @@ const mltSchema = new mongoose.Schema({
     required: true
   },
   licenseNumber: {
-    type: String,
-    required: false,
-    unique: true
-  },
+  type: String,
+  required: false,
+  unique: true,
+  sparse: true        // 👈 add this
+},
   department: {
     type: String,
     required: true,
